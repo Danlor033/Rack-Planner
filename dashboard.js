@@ -13,11 +13,11 @@ const Dashboard = (function () {
 
   const el = {
     empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"),
-    search: $("dashSearch"), colorBy: $("dashColor"), exportBtn: $("dashExport"),
+    search: $("dashSearch"), exportBtn: $("dashExport"),
     varBtn: $("varBtn"), varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
     varStats: $("varStats"), varNote: $("varNote"), varTable: $("varTable"), varBody: $("varBody"),
     varShortN: $("varShortN"), varOverN: $("varOverN"), varNoneN: $("varNoneN"), varTabs: [...document.querySelectorAll("[data-var]")],
-    varSearch: $("varSearch"), varBack: $("varBack"), stock6Sync: $("stock6Sync"),
+    varSearch: $("varSearch"), stock6Sync: $("stock6Sync"),
     kShelves: $("kShelves"), kBoxes: $("kBoxes"), kMiss: $("kMiss"), kMissWrap: $("kMissWrap"),
     kSkus: $("kSkus"), kFill: $("kFill"),
     map: $("rackMap"), mapReset: $("mapReset"),
@@ -96,10 +96,9 @@ const Dashboard = (function () {
     };
   }
 
+  // The map, the shelves and the legend are coloured by category.
   function colorOf(skuIndex) {
-    const s = state.data.skus[skuIndex];
-    const by = el.colorBy.value;
-    return state.colors[by].get(by === "category" ? s.category || "" : by === "tier" ? s.tier : s.sku) || "#94a3b8";
+    return categoryColor(state.data.skus[skuIndex].category);
   }
 
   function categoryColor(name) {
@@ -257,7 +256,7 @@ const Dashboard = (function () {
 
   function renderMap() {
     el.map.innerHTML = mapHtml();
-    el.mapLegend.innerHTML = legendHtml(el.colorBy.value);
+    el.mapLegend.innerHTML = legendHtml("category");
   }
 
   function mapHtml(pick) {
@@ -345,13 +344,22 @@ const Dashboard = (function () {
     // One card per SKU on the shelf, every number named.
     const dash = '<span class="sub">—</span>';
     const boxes = rec.sections.reduce((n, sec) => n + sec.boxes, 0);
-    let html = '<p class="detail-sum"><b>' + rec.sections.length + "</b> SKU" + (rec.sections.length === 1 ? "" : "s") +
+    // Opened for one SKU from the variance report: its other shelves, a
+    // click away, and its card picked out.
+    let html = "";
+    const focus = state.focus !== null && state.focus !== undefined ? state.alloc.results[state.focus] : null;
+    if (focus && focus.spots.length > 1) {
+      html += '<p class="detail-jump"><b>' + esc(focus.sku.sku) + "</b> is on " + focus.spots.length + " shelves: " +
+        focus.spots.map((p) => '<button type="button" class="ghost small' + (p.label === label ? " on" : "") +
+          '" data-jump="' + p.label + '">' + p.label + " \u00b7 " + fmt(p.boxes) + " box" + (p.boxes === 1 ? "" : "es") + "</button>").join("") + "</p>";
+    }
+    html += '<p class="detail-sum"><b>' + rec.sections.length + "</b> SKU" + (rec.sections.length === 1 ? "" : "s") +
       " · <b>" + fmt(boxes) + "</b> box" + (boxes === 1 ? "" : "es") + " on this shelf</p>";
     rec.sections.forEach(function (sec, i) {
       const s = state.data.skus[sec.sku];
       const fact = (name, value, wide) => '<div' + (wide ? ' class="wide"' : "") + "><dt>" + name + "</dt><dd>" +
         (value === "" || value === null || value === undefined ? dash : value) + "</dd></div>";
-      html += '<article class="dsku">' +
+      html += '<article class="dsku' + (focus && sec.sku === focus.index ? " focus" : "") + '">' +
         '<header><span class="chip" style="background:' + colorFor(i) + '"></span><b>' + esc(s.sku) + "</b></header>" +
         "<dl>" +
         fact("Category", esc(s.category)) +
@@ -400,7 +408,6 @@ const Dashboard = (function () {
     { group: "Box size (cm)", head: "W", w: 48, edit: "width" },
     { group: "Box size (cm)", head: "H", w: 48, edit: "height" },
     { head: "Locations", w: 0, worked: "locations", cls: "locs" },
-    { head: "Remarks", w: 92, worked: "remark", title: "4KB Qty \u2212 Needed: green is over quantity, red is insufficient" },
   ];
 
   // A box that is empty but needed for this SKU to get a shelf.
@@ -509,28 +516,11 @@ const Dashboard = (function () {
       ? low + '<span class="per-top" title="On a Layer 3 shelf (140 cm tall)">L3 ' + fmt(r.perTop) + "</span>" : low;
   }
 
-  // 4KB stock against what sales need: + over quantity (green), - short
-  // (red). Nothing when neither number is there.
-  function remarkHtml(r) {
-    const qty = Number(r.sku.quantity) || 0;
-    if (!qty && !r.needed) return "";
-    const diff = Math.round((qty - r.needed) * 100) / 100;
-    if (diff === 0) return '<span class="remark even" title="4KB Qty matches what is needed">0</span>';
-    const over = diff > 0;
-    const v = varianceOf(r);
-    const title = over
-      ? "Over quantity: 4KB has " + fmt(diff) + " more than needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed). " + v.note
-      : "Insufficient qty: 4KB is " + fmt(-diff) + " short of needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed). " + v.note;
-    return '<span class="remark ' + (over ? "over" : "short") + '" title="' + title + '">' +
-      (over ? "+" : "\u2212") + fmt(Math.abs(diff)) + "</span>";
-  }
-
   // The value of one worked-out column for a SKU.
   function worked(key, r) {
     switch (key) {
       case "quantity": return fmt(r.sku.quantity);
       case "sold": return fmt(r.sku.soldPerDay);
-      case "remark": return remarkHtml(r);
       case "needed": return fmt(r.needed);
       case "boxes": return "<b>" + (r.problem === "no-count" ? "?" : fmt(r.stock)) + "</b>";
       case "perShelf": return perShelfHtml(r);
@@ -732,12 +722,17 @@ const Dashboard = (function () {
 
   function closeDetail() {
     state.selected = null;
+    state.focus = null;
     el.map.querySelectorAll(".cell.selected").forEach((c) => c.classList.remove("selected"));
     el.detail.hidden = true;
     document.body.classList.remove("detail-open");
   }
 
   el.detailClose.addEventListener("click", closeDetail);
+  el.dTable.addEventListener("click", function (e) {
+    const jump = e.target.closest("button[data-jump]");
+    if (jump) select(jump.dataset.jump, false);
+  });
   // Esc closes the window on top: the shelf, then the category. The Add SKU
   // form closes itself.
   document.addEventListener("keydown", function (e) {
@@ -876,7 +871,7 @@ const Dashboard = (function () {
     facts.push(vacant + " shelves vacant");
     el.pickSub.textContent = facts.join(" · ");
     el.pickMap.innerHTML = mapHtml(state.picking);
-    el.pickLegend.innerHTML = legendHtml(el.colorBy.value);
+    el.pickLegend.innerHTML = legendHtml("category");
   }
 
   el.pickMap.addEventListener("click", function (e) {
@@ -1122,16 +1117,13 @@ const Dashboard = (function () {
     if (hit) select(hit.dataset.label, true);
   });
 
-  el.colorBy.addEventListener("change", function () { renderMap(); renderDetail(); });
 
   // Back to how the map looks when the page opens: no search, no shelf
   // picked, coloured by category, scrolled to the start. Rules and SKUs are
   // left alone.
   el.mapReset.addEventListener("click", function () {
-    el.varBack.hidden = true;
     el.search.value = "";
     state.search = "";
-    el.colorBy.value = "category";
     closeDetail();
     renderMap();
     el.map.scrollLeft = 0;
@@ -1303,17 +1295,19 @@ const Dashboard = (function () {
     return v;
   }
 
-  // Every SKU off by anything, split short and over, biggest gap first.
+  // Every SKU off by anything, biggest gap first: short with something in
+  // 6K4 (or 6K4 not known), short with nothing in 6K4, and over.
   function variances(category) {
-    const out = { short: [], over: [] };
+    const out = { short: [], over: [], none: [] };
     for (const r of state.alloc.results) {
       if (category !== null && catName(r.sku.category) !== category) continue;
       if (!(Number(r.sku.quantity) || 0) && !r.needed) continue;
       const v = varianceOf(r);
-      if (v.diff < 0) out.short.push(v);
+      if (v.diff < 0) out[v.kind === "none" ? "none" : "short"].push(v);
       else if (v.diff > 0) out.over.push(v);
     }
     out.short.sort((a, b) => a.diff - b.diff);
+    out.none.sort((a, b) => a.diff - b.diff);
     out.over.sort((a, b) => b.diff - a.diff);
     return out;
   }
@@ -1333,7 +1327,7 @@ const Dashboard = (function () {
   }
 
   function varRows(all) {
-    const rows = varTab === "none" ? all.short.filter((v) => v.kind === "none") : all[varTab];
+    const rows = all[varTab];
     const q = el.varSearch.value.trim().toLowerCase();
     return q ? rows.filter((v) => v.r.sku.sku.toLowerCase().indexOf(q) >= 0) : rows;
   }
@@ -1342,20 +1336,19 @@ const Dashboard = (function () {
     const cat = el.varCat.value || null;
     const all = variances(cat);
     const sum = (list, key) => list.reduce((n, v) => n + (v[key] || 0), 0);
-    const noStock = all.short.filter((v) => v.kind === "none");
     el.varShortN.textContent = all.short.length;
     el.varOverN.textContent = all.over.length;
-    el.varNoneN.textContent = noStock.length;
+    el.varNoneN.textContent = all.none.length;
     el.varStats.innerHTML =
       "<div><dt>Short in 4KB</dt><dd>" + fmt(all.short.length) + ' <span class="sub">SKUs</span></dd></div>' +
       "<div><dt>Bring from 6K4</dt><dd>" + fmt(sum(all.short, "bring")) + ' <span class="sub">boxes</span></dd></div>' +
-      "<div><dt>Nothing in 6K4</dt><dd>" + fmt(noStock.length) + ' <span class="sub">SKUs</span></dd></div>' +
+      "<div><dt>No stock in 6K4</dt><dd>" + fmt(all.none.length) + ' <span class="sub">SKUs</span></dd></div>' +
       "<div><dt>Over in 4KB</dt><dd>" + fmt(all.over.length) + ' <span class="sub">SKUs</span></dd></div>' +
       "<div><dt>Transfer to 6K4</dt><dd>" + fmt(sum(all.over, "moveBoxes")) + ' <span class="sub">boxes</span></dd></div>';
     if (!el.varNote.dataset.held) {
       const synced = state.data.skus.some((s) => s.qty6k4 !== null && s.qty6k4 !== undefined);
       el.varNote.textContent = "Needed = sold per day × " + state.rules.days + " days. " +
-        (synced ? "Click a SKU to see where it is on the rack map."
+        (synced ? "Click a SKU to see its boxes on the shelf: how they are turned and where they sit."
           : "6K4 Qty has not been synced yet: the laptops need extension " + Accounts.EXT_VERSION + ".");
       el.varNote.classList.toggle("bad-text", !synced);
     }
@@ -1374,7 +1367,7 @@ const Dashboard = (function () {
         '<button type="button" class="copy-btn" data-copy="' + esc(s.sku) + '" title="Copy SKU" aria-label="Copy ' + esc(s.sku) + '">' +
         COPY_ICON + "</button></span></td>" + cell(s.quantity) + cell(Math.round(v.r.needed * 100) / 100);
       const what = '<td><span class="var-what ' + (VAR_TONE[v.kind] || "") + '">' + esc(v.note) + "</span></td>";
-      const title = v.r.spots.length ? "On " + v.r.spots.map((p) => p.label).join(", ") + " — click to see it on the rack map"
+      const title = v.r.spots.length ? "On " + v.r.spots.map((p) => p.label).join(", ") + " — click to see its boxes on the shelf"
         : "Not on any 4KB shelf yet";
       const open = '<tr data-var-sku="' + v.r.index + '" title="' + esc(title) + '">';
       if (short) {
@@ -1410,7 +1403,6 @@ const Dashboard = (function () {
     const keep = el.varCat.value;
     el.varCat.innerHTML = '<option value="">All categories</option>' +
       categoryOrder().map((c) => '<option value="' + esc(c) + '"' + (c === keep ? " selected" : "") + ">" + esc(c) + "</option>").join("");
-    el.varBack.hidden = true;
     el.varModal.hidden = false;
     renderVariance();
   }
@@ -1427,22 +1419,16 @@ const Dashboard = (function () {
     varNoteTimer = setTimeout(function () { delete el.varNote.dataset.held; renderVariance(); }, 4000);
   }
 
-  // The SKU's shelves lit up on the rack map, the rest dimmed; the report
-  // waits behind the Back button.
-  function showOnMap(r) {
+  // The SKU's shelf, over the report: its boxes in 3D, which way up each
+  // stands, and what else shares the shelf. Its other shelves are a click
+  // away there; closing goes back to the report.
+  function showShelf(r) {
     if (!r.spots.length) { varSay(r.sku.sku + " is not on any 4KB shelf yet."); return; }
-    closeVariance();
-    el.search.value = r.sku.sku;
-    state.search = r.sku.sku.toLowerCase();
-    renderMap();
-    el.varBack.hidden = false;
-    const first = el.map.querySelector('.cell[data-label="' + r.spots[0].label + '"]');
-    el.map.scrollIntoView({ block: "start", behavior: "smooth" });
-    if (first) first.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    state.focus = r.index;
+    select(r.spots[0].label, false);
   }
 
   el.varBtn.addEventListener("click", function () { if (state.data) openVariance(); });
-  el.varBack.addEventListener("click", openVariance);
   el.varClose.addEventListener("click", closeVariance);
   el.varModal.addEventListener("click", function (e) { if (e.target === el.varModal) closeVariance(); });
   el.varCat.addEventListener("change", renderVariance);
@@ -1452,7 +1438,7 @@ const Dashboard = (function () {
     const copy = e.target.closest("button[data-copy]");
     if (copy) { copyButton(copy); return; }
     const tr = e.target.closest("tr[data-var-sku]");
-    if (tr) showOnMap(state.alloc.results[Number(tr.dataset.varSku)]);
+    if (tr) showShelf(state.alloc.results[Number(tr.dataset.varSku)]);
   });
   el.varExport.addEventListener("click", function () {
     if (!Excel.available()) { alert("The spreadsheet library did not load, so the report cannot be written."); return; }

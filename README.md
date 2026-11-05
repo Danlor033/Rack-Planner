@@ -125,8 +125,6 @@ and SKU, in groups:
 - **Locations** -- the shelves, and *+ Select location* while boxes are
   still waiting; a tag instead when something stops it (no Qty/Box, no
   L / W / H, box too big, no 4KB Qty)
-- **Remarks** -- 4KB Qty − Needed: green **+** is over quantity, red **−** is
-  insufficient; hovering says which, with both numbers.
 
 **Days of stock in 4KB** (beside **+ Add SKU**) sets Needed: *Sold per day ×
 days*. Boxes may be turned any way to fit a shelf.
@@ -317,8 +315,10 @@ from Needed (sold per day x days of stock), in two tabs, biggest gap first:
 
 Boxes are counted with Qty/Box: a part-full carton counts as a box to bring,
 and only full boxes are sent back. It follows the category picker, updates
-live, and exports to Excel (two sheets). The Remarks cell's hover text says the
-same for one SKU.
+live, and exports to Excel (a sheet per tab). A third tab, **No stock in
+6K4**, holds the SKUs short in 4KB that 6K4 cannot help; **Short in 4KB** leaves
+them out. Clicking a SKU opens its shelf over the report: the boxes in 3D, which
+way up each stands, and its other shelves a click away.
 
 To add a laptop, follow **Accounts > 4KB sync laptops > Add a laptop**: the
 **Download the extension** button there gives a zip of `extension/`. Chrome

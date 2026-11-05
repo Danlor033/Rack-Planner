@@ -6,7 +6,7 @@
 <title>Rack Planner</title>
 <!-- Tab icon: the top bar's mark, kept in the page so every copy has it. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3CclipPath id='r'%3E%3Crect width='32' height='32' rx='8'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23r%29'%3E%3Cpath d='M0 0H32L0 32Z' fill='%232f6fed'/%3E%3Cpath d='M32 32H0L32 0Z' fill='%2317a673'/%3E%3Cpath d='M-2 34L34 -2' stroke='%23fff' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E" />
-<link rel="stylesheet" href="style.css?v=2026-11-05f" />
+<link rel="stylesheet" href="style.css?v=2026-11-05g" />
 </head>
 <body>
 
@@ -49,12 +49,7 @@
       </div>
       <div class="dash-tools">
         <input id="dashSearch" type="search" placeholder="Find a SKU, category or location" />
-        <select id="dashColor" title="What the colours mean">
-          <option value="category">Colour by category</option>
-          <option value="tier">Colour by tier</option>
-          <option value="sku">Colour by SKU</option>
-        </select>
-        <button class="ghost" id="varBtn" type="button" title="SKUs short or over in 4KB, and what 6K4 can do about it">Variance report</button>
+        <button class="var-btn" id="varBtn" type="button" title="SKUs short or over in 4KB, and what 6K4 can do about it">Variance report</button>
         <button class="primary" id="dashExport" type="button">Export put-away list</button>
       </div>
     </div>
@@ -168,9 +163,8 @@
       <div class="map-bar">
         <span class="sub">Click a shelf to see how its boxes go in.</span>
         <div class="map-legend" id="mapLegend"></div>
-        <button class="primary small" id="varBack" type="button" hidden>&larr; Back to variance report</button>
         <button class="ghost small" id="mapReset" type="button"
-          title="Clear the search and the picked shelf, and colour by category again">&#8634; Reset map</button>
+          title="Clear the search and the picked shelf">&#8634; Reset map</button>
       </div>
       <div class="map-rows" id="rackMap"></div>
     </div>
@@ -508,20 +502,20 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=2026-11-05f"></script>
-<script src="packer.js?v=2026-11-05f"></script>
-<script src="layout.js?v=2026-11-05f"></script>
-<script src="allocate.js?v=2026-11-05f"></script>
+<script src="config.js?v=2026-11-05g"></script>
+<script src="packer.js?v=2026-11-05g"></script>
+<script src="layout.js?v=2026-11-05g"></script>
+<script src="allocate.js?v=2026-11-05g"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="db.js?v=2026-11-05f"></script>
-<script src="excel.js?v=2026-11-05f"></script>
-<script src="view3d.js?v=2026-11-05f"></script>
-<script src="view2d.js?v=2026-11-05f"></script>
-<script src="app.js?v=2026-11-05f"></script>
-<script src="soldsheet.js?v=2026-11-05f"></script>
-<script src="dashboard.js?v=2026-11-05f"></script>
-<script src="auth.js?v=2026-11-05f"></script>
-<script src="accounts.js?v=2026-11-05f"></script>
-<script src="pages.js?v=2026-11-05f"></script>
+<script src="db.js?v=2026-11-05g"></script>
+<script src="excel.js?v=2026-11-05g"></script>
+<script src="view3d.js?v=2026-11-05g"></script>
+<script src="view2d.js?v=2026-11-05g"></script>
+<script src="app.js?v=2026-11-05g"></script>
+<script src="soldsheet.js?v=2026-11-05g"></script>
+<script src="dashboard.js?v=2026-11-05g"></script>
+<script src="auth.js?v=2026-11-05g"></script>
+<script src="accounts.js?v=2026-11-05g"></script>
+<script src="pages.js?v=2026-11-05g"></script>
 </body>
 </html>

@@ -237,8 +237,8 @@ const Excel = (function () {
     XLSX.writeFile(book, "rack-putaway-" + day + ".xlsx");
   }
 
-  // The variance report: SKUs short in 4KB and what 6K4 can send, and SKUs
-  // over and the boxes to transfer to 6K4. `v` from the dashboard's variances().
+  // The variance report: SKUs short in 4KB and what 6K4 can send, those
+  // short with nothing in 6K4, and SKUs over and the boxes to transfer to 6K4. `v` from the dashboard's variances().
   function variance(v, days) {
     const blank = (n) => (n === null || n === undefined ? "" : n);
     const need = (r) => Math.round(r.needed * 100) / 100;
@@ -249,6 +249,12 @@ const Excel = (function () {
       short.push([s.sku, s.category, s.tier, blank(s.quantity), need(x.r), -x.diff, blank(x.perBox),
         blank(x.gapBoxes), blank(x.q6), blank(x.boxes6), blank(x.bring), x.note]);
     }
+    const none = [short[0].slice()];
+    for (const x of v.none) {
+      const s = x.r.sku;
+      none.push([s.sku, s.category, s.tier, blank(s.quantity), need(x.r), -x.diff, blank(x.perBox),
+        blank(x.gapBoxes), blank(x.q6), blank(x.boxes6), "", x.note]);
+    }
     const over = [["SKU", "Category", "Tier", "4KB Qty", "Needed (" + days + " days)", "Over", "Qty per box",
       "Transfer to 6K4 (boxes)", "Qty to transfer", "What to do"]];
     for (const x of v.over) {
@@ -258,6 +264,7 @@ const Excel = (function () {
     }
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet(short), "Short in 4KB");
+    XLSX.utils.book_append_sheet(book, sheet(none), "No stock in 6K4");
     XLSX.utils.book_append_sheet(book, sheet(over), "Over in 4KB");
     const day = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(book, "4kb-variance-" + day + ".xlsx");
