@@ -6,7 +6,7 @@ const Accounts = (function () {
 
   // The extension's version in extension/manifest.json, which is also the one
   // in extension-pack.js (tools/pack_extension.py checks they agree).
-  const EXT_VERSION = "1.1.0";
+  const EXT_VERSION = "1.2.0";
   // A laptop that has not checked in for this long is taken to be off.
   const OFFLINE = 2 * 60 * 1000;
   const REFRESH = 15 * 1000;

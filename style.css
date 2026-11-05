@@ -846,3 +846,17 @@ body:not(.is-admin) #soldSync { display: none; }
   border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
 }
 .reset-ask span { flex: 1 1 300px; }
+/* The variance report: short and over in 4KB, and what 6K4 can do. */
+.var-modal .cat-panel { max-width: 1400px; }
+.var-tabs { display: flex; gap: 4px; padding: 10px 24px 8px; }
+.var-tabs .tab { background: var(--bg); border-radius: 8px; font-size: 13px; }
+.var-tabs .tab.on { background: var(--accent); color: #fff; box-shadow: none; }
+.var-tabs .tab b { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.var-tbl td { vertical-align: middle; }
+.var-tbl td.sku-name { white-space: normal; overflow-wrap: anywhere; }
+.var-tbl .remark { cursor: default; }
+.var-what { display: inline-block; font-size: 12px; }
+.var-what.good { color: var(--good); }
+.var-what.warn { color: var(--warn); }
+.var-what.bad { color: var(--bad); font-weight: 600; }
+.var-what.info { color: var(--accent); }

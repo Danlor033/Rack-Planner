@@ -296,6 +296,30 @@ open.
 An empty list from JSTERP counts as a failed run: 4KB Qty is left as it is
 rather than set to 0 for every SKU.
 
+The syncing laptop also reads **6K4** (start position 6K4, Main Warehouse,
+Storage Location) into 
+ack_skus.qty_6k4. Which zones it reads, and how, sits
+in 
+ack_settings.jst_zones and reaches the laptops at each check-in, so
+changing it needs no new extension; a new zone does need a column and a line
+in jst_sync().
+
+## Variance report
+
+**Variance report** on the Racks page lists every SKU whose 4KB Qty is off
+from Needed (sold per day x days of stock), in two tabs, biggest gap first:
+
+- **Short in 4KB**: the gap in qty and boxes, the 6K4 Qty and boxes, and the
+  boxes to bring from 6K4 -- the boxes 4KB is short, or all 6K4 has if that is
+  less. No stock in 6K4 is shown in red.
+- **Over in 4KB**: the whole boxes that can go back to 6K4 while 4KB still
+  holds what is needed (less than a box over stays).
+
+Boxes are counted with Qty/Box: a part-full carton counts as a box to bring,
+and only full boxes are sent back. It follows the category picker, updates
+live, and exports to Excel (two sheets). The Remarks cell's hover text says the
+same for one SKU.
+
 To add a laptop, follow **Accounts > 4KB sync laptops > Add a laptop**: the
 **Download the extension** button there gives a zip of `extension/`. Chrome
 loads an unpacked extension from its folder, so the folder has to stay, and a

@@ -14,6 +14,9 @@ const Dashboard = (function () {
   const el = {
     empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"),
     search: $("dashSearch"), colorBy: $("dashColor"), exportBtn: $("dashExport"),
+    varBtn: $("varBtn"), varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
+    varStats: $("varStats"), varNote: $("varNote"), varTable: $("varTable"), varBody: $("varBody"),
+    varShortN: $("varShortN"), varOverN: $("varOverN"), varTabs: [...document.querySelectorAll("[data-var]")],
     kShelves: $("kShelves"), kBoxes: $("kBoxes"), kMiss: $("kMiss"), kMissWrap: $("kMissWrap"),
     kSkus: $("kSkus"), kFill: $("kFill"),
     map: $("rackMap"), mapReset: $("mapReset"),
@@ -498,9 +501,10 @@ const Dashboard = (function () {
     const diff = Math.round((qty - r.needed) * 100) / 100;
     if (diff === 0) return '<span class="remark even" title="4KB Qty matches what is needed">0</span>';
     const over = diff > 0;
+    const v = varianceOf(r);
     const title = over
-      ? "Over quantity: 4KB has " + fmt(diff) + " more than needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed)"
-      : "Insufficient qty: 4KB is " + fmt(-diff) + " short of needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed)";
+      ? "Over quantity: 4KB has " + fmt(diff) + " more than needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed). " + v.note
+      : "Insufficient qty: 4KB is " + fmt(-diff) + " short of needed (" + fmt(qty) + " in 4KB, " + fmt(r.needed) + " needed). " + v.note;
     return '<span class="remark ' + (over ? "over" : "short") + '" title="' + title + '">' +
       (over ? "+" : "\u2212") + fmt(Math.abs(diff)) + "</span>";
   }
@@ -722,7 +726,8 @@ const Dashboard = (function () {
   // form closes itself.
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape" || el.skuDialog.open || el.askDialog.open) return;
-    if (!el.detail.hidden) closeDetail();
+    if (!el.varModal.hidden) closeVariance();
+    else if (!el.detail.hidden) closeDetail();
     else if (!el.pickModal.hidden) closePicker();
     else if (!el.catModal.hidden) closeCategory();
   });
@@ -1093,6 +1098,7 @@ const Dashboard = (function () {
       renderCatStats();
       updateSkus();
       if (state.picking !== null) renderPicker();
+      if (!el.varModal.hidden) renderVariance();
     }, 0);
   }
 
@@ -1251,6 +1257,131 @@ const Dashboard = (function () {
   el.exportBtn.addEventListener("click", function () {
     if (!Excel.available()) { alert("The spreadsheet library did not load, so the list cannot be written."); return; }
     Excel.putAway(state.data.skus, state.alloc, state.data.import);
+  });
+
+  // --- variance: 4KB stock against what sales need, and what 6K4 can do -------
+
+  // One SKU's gap, in qty and in boxes, and what to do about it. Short: how
+  // many boxes 6K4 can send, at most the boxes 4KB is short. Over: the whole
+  // boxes 4KB can send back to 6K4 and still hold what is needed.
+  function varianceOf(r) {
+    const s = r.sku;
+    const qty = Number(s.quantity) || 0;
+    const diff = Math.round((qty - r.needed) * 100) / 100;
+    const perBox = s.qtyPerBox > 0 ? s.qtyPerBox : null;
+    const has6 = s.qty6k4 !== null && s.qty6k4 !== undefined;
+    const q6 = Number(s.qty6k4) || 0;
+    const v = { r: r, diff: diff, perBox: perBox, q6: has6 ? q6 : null, kind: "", note: "" };
+    if (diff < 0) {
+      const gap = -diff;
+      v.gapBoxes = perBox ? Math.ceil(gap / perBox - 1e-9) : null;
+      v.boxes6 = perBox && has6 ? Math.ceil(q6 / perBox - 1e-9) : null;
+      if (!has6) { v.kind = "unknown"; v.note = "6K4 has not been synced yet."; }
+      else if (q6 <= 0) { v.kind = "none"; v.note = "No stock in 6K4."; }
+      else if (!perBox) { v.kind = "nocount"; v.note = "6K4 has " + fmt(q6) + " qty; fill in Qty/Box to count boxes."; }
+      else if (q6 >= gap) {
+        v.kind = "covered"; v.bring = v.gapBoxes;
+        v.note = "Bring " + fmt(v.bring) + " box" + (v.bring === 1 ? "" : "es") + " from 6K4 (6K4 has " + fmt(v.boxes6) + ").";
+      } else {
+        v.kind = "partial"; v.bring = v.boxes6;
+        v.note = "6K4 has only " + fmt(v.boxes6) + " box" + (v.boxes6 === 1 ? "" : "es") + " (" + fmt(q6) + " qty): bring all, still " +
+          fmt(gap - q6) + " short.";
+      }
+    } else if (diff > 0) {
+      v.moveBoxes = perBox ? Math.floor(diff / perBox + 1e-9) : null;
+      v.moveQty = perBox ? v.moveBoxes * perBox : null;
+      if (!perBox) { v.kind = "nocount"; v.note = "Fill in Qty/Box to count the boxes to send to 6K4."; }
+      else if (v.moveBoxes > 0) {
+        v.kind = "move";
+        v.note = "Transfer " + fmt(v.moveBoxes) + " box" + (v.moveBoxes === 1 ? "" : "es") + " (" + fmt(v.moveQty) + " qty) to 6K4.";
+      } else { v.kind = "keep"; v.note = "Less than one box over: keep it in 4KB."; }
+    }
+    return v;
+  }
+
+  // Every SKU off by anything, split short and over, biggest gap first.
+  function variances(category) {
+    const out = { short: [], over: [] };
+    for (const r of state.alloc.results) {
+      if (category !== null && catName(r.sku.category) !== category) continue;
+      if (!(Number(r.sku.quantity) || 0) && !r.needed) continue;
+      const v = varianceOf(r);
+      if (v.diff < 0) out.short.push(v);
+      else if (v.diff > 0) out.over.push(v);
+    }
+    out.short.sort((a, b) => a.diff - b.diff);
+    out.over.sort((a, b) => b.diff - a.diff);
+    return out;
+  }
+
+  const VAR_TONE = { covered: "good", partial: "warn", none: "bad", unknown: "", nocount: "warn", move: "info", keep: "" };
+  let varTab = "short";
+
+  function renderVariance() {
+    const cat = el.varCat.value || null;
+    const all = variances(cat);
+    const sum = (list, key) => list.reduce((n, v) => n + (v[key] || 0), 0);
+    const bring = sum(all.short, "bring");
+    const toMove = sum(all.over, "moveBoxes");
+    const noStock = all.short.filter((v) => v.kind === "none").length;
+    el.varShortN.textContent = all.short.length;
+    el.varOverN.textContent = all.over.length;
+    el.varStats.innerHTML =
+      "<div><dt>Short in 4KB</dt><dd>" + fmt(all.short.length) + ' <span class="sub">SKUs</span></dd></div>' +
+      "<div><dt>Bring from 6K4</dt><dd>" + fmt(bring) + ' <span class="sub">boxes</span></dd></div>' +
+      "<div><dt>Nothing in 6K4</dt><dd>" + fmt(noStock) + ' <span class="sub">SKUs</span></dd></div>' +
+      "<div><dt>Over in 4KB</dt><dd>" + fmt(all.over.length) + ' <span class="sub">SKUs</span></dd></div>' +
+      "<div><dt>Transfer to 6K4</dt><dd>" + fmt(toMove) + ' <span class="sub">boxes</span></dd></div>';
+    const synced = state.data.skus.some((s) => s.qty6k4 !== null && s.qty6k4 !== undefined);
+    el.varNote.textContent = "Needed = sold per day × " + state.rules.days + " days. " +
+      (synced ? "4KB and 6K4 Qty are live from JSTERP." : "6K4 Qty has not been synced yet: the laptops need extension " + Accounts.EXT_VERSION + ".");
+    el.varNote.classList.toggle("bad-text", !synced);
+    el.varTabs.forEach((b) => b.classList.toggle("on", b.dataset.var === varTab));
+
+    const rows = all[varTab];
+    const head = varTab === "short"
+      ? ["#", "SKU", "Category", "4KB Qty", "Needed", "Short", "Qty/Box", "Short (boxes)", "6K4 Qty", "6K4 boxes", "Bring from 6K4", "What to do"]
+      : ["#", "SKU", "Category", "4KB Qty", "Needed", "Over", "Qty/Box", "Transfer to 6K4", "Qty to transfer", "What to do"];
+    const num = (n) => '<td class="num">' + (n === null || n === undefined ? '<span class="sub">—</span>' : fmt(n)) + "</td>";
+    el.varTable.innerHTML = "<thead><tr>" + head.map((h, i) => "<th" + (i > 2 && i < head.length - 1 ? ' class="num"' : "") + ">" + h + "</th>").join("") +
+      "</tr></thead><tbody>" + (rows.length ? rows.map(function (v, i) {
+        const s = v.r.sku;
+        const lead = '<td class="num sub">' + (i + 1) + '</td><td class="sku-name"><b>' + esc(s.sku) + "</b></td><td>" +
+          '<i class="cat-dot" style="background:' + categoryColor(s.category) + '"></i>' + esc(catName(s.category)) + "</td>" +
+          num(s.quantity) + num(Math.round(v.r.needed * 100) / 100);
+        const what = '<td><span class="var-what ' + (VAR_TONE[v.kind] || "") + '">' + esc(v.note) + "</span></td>";
+        if (varTab === "short") {
+          return "<tr>" + lead + '<td class="num"><span class="remark short">−' + fmt(-v.diff) + "</span></td>" +
+            num(v.perBox) + num(v.gapBoxes) + num(v.q6) + num(v.boxes6) +
+            '<td class="num"><b>' + (v.bring ? fmt(v.bring) : "") + "</b></td>" + what + "</tr>";
+        }
+        return "<tr>" + lead + '<td class="num"><span class="remark over">+' + fmt(v.diff) + "</span></td>" +
+          num(v.perBox) + '<td class="num"><b>' + (v.moveBoxes ? fmt(v.moveBoxes) : "") + "</b></td>" +
+          num(v.moveBoxes ? v.moveQty : null) + what + "</tr>";
+      }).join("") : '<tr><td colspan="' + head.length + '" class="sub">Nothing ' + (varTab === "short" ? "short" : "over") +
+        (cat ? " in " + esc(cat) : "") + ".</td></tr>") + "</tbody>";
+  }
+
+  function openVariance() {
+    const cats = [...new Set(state.data.skus.map((s) => catName(s.category)))].sort(Allocate.compareText);
+    const keep = el.varCat.value;
+    el.varCat.innerHTML = '<option value="">All categories</option>' +
+      cats.map((c) => '<option value="' + esc(c) + '"' + (c === keep ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+    el.varModal.hidden = false;
+    renderVariance();
+    el.varBody.scrollTop = 0;
+  }
+
+  function closeVariance() { el.varModal.hidden = true; }
+
+  el.varBtn.addEventListener("click", function () { if (state.data) openVariance(); });
+  el.varClose.addEventListener("click", closeVariance);
+  el.varModal.addEventListener("click", function (e) { if (e.target === el.varModal) closeVariance(); });
+  el.varCat.addEventListener("change", renderVariance);
+  el.varTabs.forEach((b) => b.addEventListener("click", function () { varTab = b.dataset.var; renderVariance(); }));
+  el.varExport.addEventListener("click", function () {
+    if (!Excel.available()) { alert("The spreadsheet library did not load, so the report cannot be written."); return; }
+    Excel.variance(variances(el.varCat.value || null), state.rules.days);
   });
 
   document.addEventListener("themechange", function () { if (state.data) renderDetail(); });

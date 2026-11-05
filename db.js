@@ -142,6 +142,8 @@ const DB = (function () {
   function fromRow(r) {
     const s = { id: r.id, line: r.line_no, tier: r.tier || "", category: r.category || "", sku: r.sku };
     for (const k in COLUMNS) s[k] = r[COLUMNS[k]];
+    // Read only: written by the 4KB sync, from JSTERP's 6K4 storage.
+    s.qty6k4 = r.qty_6k4 === undefined ? null : r.qty_6k4;
     return s;
   }
 

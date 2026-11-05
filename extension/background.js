@@ -4,7 +4,8 @@
 // installed in, for as long as that Chrome is open. Several laptops can have
 // it. Every 30 seconds each one checks in with Rack Planner, which answers
 // whose turn it is: one laptop reads Warehouse > Zone Inventory -- owner
-// Shigetsu, Main Warehouse, start position 4KB -- and sends the quantities;
+// Shigetsu, Main Warehouse, start position 4KB, then the other zones Rack
+// Planner names (6K4 storage) -- and sends the quantities;
 // the others only make sure they are still signed in to JSTERP, ready to take
 // over within a minute if it stops. Each laptop is on Rack Planner's
 // Accounts page, where an admin can rename, approve or pause it.
@@ -29,14 +30,25 @@ const FILTER = {
 
 class SignedOut extends Error {}
 
+// The other zones come from Rack Planner at each check-in, as
+// { key, bin, binTypes, areas }: 6K4 storage, for now. Changing one there
+// needs no new extension.
+function zoneFilter(zone) {
+  return Object.assign({}, FILTER, {
+    BinStart: zone.bin,
+    BinTypes: Array.isArray(zone.binTypes) ? zone.binTypes : [],
+    AreaTypes: Array.isArray(zone.areas) && zone.areas.length ? zone.areas : FILTER.AreaTypes,
+  });
+}
+
 // --- JSTERP -------------------------------------------------------------------
 
-async function stockPage(page, size) {
+async function stockPage(page, size, filter) {
   const res = await fetch(STOCK_URL, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ RequestModel: FILTER, DataPage: { pageSize: size, pageIndex: page } }),
+    body: JSON.stringify({ RequestModel: filter || FILTER, DataPage: { pageSize: size, pageIndex: page } }),
   });
   const text = await res.text();
   let json = null;
@@ -47,27 +59,45 @@ async function stockPage(page, size) {
   return json;
 }
 
-// Every row of the filtered list, all pages, added up per SKU.
-async function readStock() {
+// Every row of one filtered list, all pages, added up per SKU.
+async function readZone(filter) {
   const rows = [];
   for (let page = 1; page < 50; page++) {
-    const json = await stockPage(page, 1000);
+    const json = await stockPage(page, 1000, filter);
     rows.push.apply(rows, json.Data);
     if (!json.DataPage || json.DataPage.IsLast || !json.Data.length) break;
   }
-  // Nobody runs 4KB down to nothing: an empty list is a fault at JSTERP, and
-  // taking it at its word would zero every SKU in Rack Planner.
-  if (!rows.length) throw new Error("JSTERP sent an empty stock list, so 4KB Qty was left as it is.");
-  // Start position 4KB already narrows it; this keeps anything else out
-  // should JSTERP ever read it as "from 4KB onwards".
+  // Start position already narrows it; this keeps anything else out should
+  // JSTERP ever read it as "from here onwards".
+  const start = String(filter.BinStart).toUpperCase();
   const qty = {};
   for (const r of rows) {
-    if (!/^4KB/i.test(String(r.Bin || ""))) continue;
+    if (String(r.Bin || "").toUpperCase().indexOf(start) !== 0) continue;
     const sku = String(r.SkuId || "").trim().toLowerCase();
     if (!sku) continue;
     qty[sku] = (qty[sku] || 0) + (Number(r.Qty) || 0);
   }
   return { qty: qty, rows: rows.length };
+}
+
+// 4KB, then each other zone. 4KB has to come back; a zone that fails only
+// keeps its old numbers, and says so.
+async function readStock(zones) {
+  const stock = await readZone(FILTER);
+  // Nobody runs 4KB down to nothing: an empty list is a fault at JSTERP, and
+  // taking it at its word would zero every SKU in Rack Planner.
+  if (!stock.rows) throw new Error("JSTERP sent an empty stock list, so 4KB Qty was left as it is.");
+  stock.zones = {};
+  stock.zoneErrors = [];
+  for (const zone of zones || []) {
+    try {
+      stock.zones[zone.key] = (await readZone(zoneFilter(zone))).qty;
+    } catch (e) {
+      if (e instanceof SignedOut) throw e;
+      stock.zoneErrors.push(zone.bin + ": " + e.message);
+    }
+  }
+  return stock;
 }
 
 // Waiting laptops ask for one row: enough to know the sign-in still works,
@@ -167,7 +197,7 @@ async function round() {
 
     let stock = null;
     try {
-      if (turn.mode === "sync") stock = await readStock();
+      if (turn.mode === "sync") stock = await readStock(turn.zones);
       else await checkSignedIn();
       await chrome.storage.local.set({ jst: { ok: true } });
       await chrome.storage.local.remove("warned");
@@ -179,10 +209,13 @@ async function round() {
     }
 
     if (turn.mode === "sync") {
-      const info = await rpc("jst_sync", { p_secret: key, p_stock: stock.qty, p_rows: stock.rows });
-      await show(true, "Syncing · " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
+      const info = await rpc("jst_sync", { p_secret: key, p_stock: stock.qty, p_rows: stock.rows, p_zones: stock.zones });
+      const z = (info.zones || {})["6k4"];
+      await show(!stock.zoneErrors.length, "Syncing · " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
+        (z ? Number(z.units).toLocaleString() + " pcs in 6K4 · " : "") +
         (info.changed ? info.changed + " updated" : "no change") +
-        (info.notInPlannerCount ? " · " + info.notInPlannerCount + " not in Rack Planner" : ""));
+        (info.notInPlannerCount ? " · " + info.notInPlannerCount + " not in Rack Planner" : "") +
+        (stock.zoneErrors.length ? " · not read: " + stock.zoneErrors.join("; ") : ""));
     } else if (turn.mode === "standby") {
       await show(true, "Standby: another laptop is syncing. Signed in to JSTERP and ready to take over.");
     } else {

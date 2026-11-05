@@ -6,7 +6,7 @@
 <title>Rack Planner</title>
 <!-- Tab icon: the top bar's mark, kept in the page so every copy has it. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3CclipPath id='r'%3E%3Crect width='32' height='32' rx='8'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23r%29'%3E%3Cpath d='M0 0H32L0 32Z' fill='%232f6fed'/%3E%3Cpath d='M32 32H0L32 0Z' fill='%2317a673'/%3E%3Cpath d='M-2 34L34 -2' stroke='%23fff' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E" />
-<link rel="stylesheet" href="style.css?v=2026-11-05d" />
+<link rel="stylesheet" href="style.css?v=2026-11-05e" />
 </head>
 <body>
 
@@ -53,6 +53,7 @@
           <option value="tier">Colour by tier</option>
           <option value="sku">Colour by SKU</option>
         </select>
+        <button class="ghost" id="varBtn" type="button" title="SKUs short or over in 4KB, and what 6K4 can do about it">Variance report</button>
         <button class="primary" id="dashExport" type="button">Export put-away list</button>
       </div>
     </div>
@@ -96,6 +97,31 @@
           </div>
         </div>
         <div class="tbl-wrap cat-body" id="catBody"><table class="tbl" id="skuTable"></table></div>
+      </div>
+    </div>
+
+    <!-- Variance: every SKU short or over in 4KB against what sales need,
+         and what 6K4 storage can send, or should take back, in boxes. -->
+    <div class="cat-modal var-modal" id="varModal" role="dialog" aria-modal="true" aria-labelledby="varTitle" hidden>
+      <div class="cat-panel">
+        <div class="cat-head">
+          <div class="detail-title">
+            <span class="detail-cap">4KB stock vs needed</span>
+            <h3 id="varTitle">Variance report</h3>
+            <dl class="detail-stats cat-stats" id="varStats"></dl>
+            <p class="sub" id="varNote">&nbsp;</p>
+          </div>
+          <div class="sku-tools">
+            <select id="varCat" title="Which category"><option value="">All categories</option></select>
+            <button class="primary" id="varExport" type="button">Export to Excel</button>
+            <button class="ghost small detail-close" id="varClose" type="button" title="Close (Esc)" aria-label="Close">&times;</button>
+          </div>
+        </div>
+        <div class="var-tabs" role="tablist">
+          <button class="tab on" data-var="short" type="button" role="tab">Short in 4KB <b id="varShortN"></b></button>
+          <button class="tab" data-var="over" type="button" role="tab">Over in 4KB <b id="varOverN"></b></button>
+        </div>
+        <div class="tbl-wrap cat-body" id="varBody"><table class="tbl var-tbl" id="varTable"></table></div>
       </div>
     </div>
 
@@ -478,20 +504,20 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=2026-11-05d"></script>
-<script src="packer.js?v=2026-11-05d"></script>
-<script src="layout.js?v=2026-11-05d"></script>
-<script src="allocate.js?v=2026-11-05d"></script>
+<script src="config.js?v=2026-11-05e"></script>
+<script src="packer.js?v=2026-11-05e"></script>
+<script src="layout.js?v=2026-11-05e"></script>
+<script src="allocate.js?v=2026-11-05e"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="db.js?v=2026-11-05d"></script>
-<script src="excel.js?v=2026-11-05d"></script>
-<script src="view3d.js?v=2026-11-05d"></script>
-<script src="view2d.js?v=2026-11-05d"></script>
-<script src="app.js?v=2026-11-05d"></script>
-<script src="soldsheet.js?v=2026-11-05d"></script>
-<script src="dashboard.js?v=2026-11-05d"></script>
-<script src="auth.js?v=2026-11-05d"></script>
-<script src="accounts.js?v=2026-11-05d"></script>
-<script src="pages.js?v=2026-11-05d"></script>
+<script src="db.js?v=2026-11-05e"></script>
+<script src="excel.js?v=2026-11-05e"></script>
+<script src="view3d.js?v=2026-11-05e"></script>
+<script src="view2d.js?v=2026-11-05e"></script>
+<script src="app.js?v=2026-11-05e"></script>
+<script src="soldsheet.js?v=2026-11-05e"></script>
+<script src="dashboard.js?v=2026-11-05e"></script>
+<script src="auth.js?v=2026-11-05e"></script>
+<script src="accounts.js?v=2026-11-05e"></script>
+<script src="pages.js?v=2026-11-05e"></script>
 </body>
 </html>
