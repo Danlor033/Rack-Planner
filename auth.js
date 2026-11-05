@@ -93,6 +93,7 @@ const Auth = (function () {
     }
     $("acctNav").hidden = !canManage();
     document.body.classList.toggle("read-only", !canEdit());
+    document.body.classList.toggle("is-admin", role() === "admin");
     $("ruleDays").readOnly = !canEdit();
     if (!canEdit()) $("skuStatus").textContent = "Read only — your account can look, not change anything";
   }

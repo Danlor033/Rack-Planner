@@ -817,3 +817,13 @@ body.read-only .tbl input.cell-in[readonly] { pointer-events: none; }
 .acct-steps li { margin-bottom: 6px; }
 .acct-steps a { color: var(--accent); }
 .acct-steps code, .jst-setup code { font-size: 12px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+/* Sold/Day's source line is for admins; everyone else just sees the numbers. */
+body:not(.is-admin) #soldSync { display: none; }
+
+.access-dialog { width: min(480px, calc(100vw - 32px)); }
+.access-dialog .ask-list { margin: 10px 0; }
+.access-warn {
+  color: var(--bad); padding: 8px 10px; border-radius: 6px;
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+}

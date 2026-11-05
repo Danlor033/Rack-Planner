@@ -20,6 +20,8 @@ const Accounts = (function () {
     note: $("acctNote"),
     dialog: $("acctDialog"), dForm: $("acctForm"), dTitle: $("acctFormTitle"), dBody: $("acctFormBody"),
     dError: $("acctFormError"), dSave: $("acctFormSave"), dCancel: $("acctFormCancel"),
+    aDialog: $("accessDialog"), aTitle: $("accessTitle"), aBody: $("accessBody"), aError: $("accessError"),
+    aYes: $("accessYes"), aNo: $("accessNo"),
   };
 
   let people = [];
@@ -212,20 +214,56 @@ const Accounts = (function () {
     el.accessBtn.className = on ? "ghost" : "primary";
   }
 
-  el.accessBtn.addEventListener("click", async function () {
-    const on = !Auth.required();
-    if (on) {
-      const waiting = laptops.filter((d) => !d.approved);
-      if (!confirm("From now on only people with an account can open Rack Planner, on every PC." +
-        (waiting.length ? "\n\n" + waiting.length + " laptop(s) are not approved and will stop syncing: " +
-          waiting.map((d) => d.name).join(", ") + "." : "") +
-        "\n\nRequire sign-in?")) return;
+  // What turning sign-in on or off will do, in a window over the page, with
+  // anything that will stop working spelled out before anyone says yes.
+  function accessBody(on) {
+    if (!on) {
+      return "<p>Anyone with the link will be able to open Rack Planner again <b>and change things</b>, " +
+        "without signing in. Accounts stay as they are.</p>" +
+        '<p class="sub">Laptops sync whether or not they are approved.</p>';
     }
+    const count = (r) => people.filter((p) => p.role === r && !p.disabled).length;
+    const waiting = laptops.filter((d) => !d.approved);
+    const approved = laptops.length - waiting.length;
+    let html = "<p>Only people with an account will be able to open Rack Planner, on every PC and on the " +
+      "online copy. Anyone else sees only the sign-in window.</p>" +
+      '<ul class="ask-list">' +
+      "<li><b>" + count("admin") + "</b> admin, <b>" + count("editor") + "</b> editor, <b>" + count("viewer") +
+      "</b> viewer account" + (people.length === 1 ? "" : "s") + " can sign in.</li>" +
+      "<li><b>" + approved + "</b> of " + laptops.length + " sync laptop" + (laptops.length === 1 ? "" : "s") +
+      " approved.</li></ul>";
+    if (waiting.length) {
+      html += '<p class="access-warn">' + (approved ? "" : "<b>The 4KB Qty will stop updating.</b> ") +
+        "These laptops are not approved and will stop syncing: <b>" + waiting.map((d) => esc(d.name)).join(", ") +
+        "</b>. Approve them first if they should keep going.</p>";
+    }
+    html += '<p class="sub">Anyone with the page open is asked to sign in on their next refresh.</p>';
+    return html;
+  }
+
+  el.accessBtn.addEventListener("click", function () {
+    const on = !Auth.required();
+    el.aTitle.textContent = on ? "Require sign-in?" : "Let anyone open Rack Planner?";
+    el.aBody.innerHTML = accessBody(on);
+    el.aYes.textContent = on ? "Require sign-in" : "Let anyone open it";
+    el.aError.hidden = true;
+    el.aYes.disabled = false;
+    el.aDialog.showModal();
+    el.aNo.focus();
+  });
+  el.aNo.addEventListener("click", function () { el.aDialog.close(); });
+  el.aDialog.addEventListener("click", function (e) {
+    if (e.target === el.aDialog) el.aDialog.close();
+  });
+  el.aYes.addEventListener("click", async function () {
+    el.aYes.disabled = true;
     try {
-      await DB.settings.setRequireSignIn(on);
+      await DB.settings.setRequireSignIn(!Auth.required());
       location.reload();
     } catch (ex) {
-      say(ex.message, true);
+      el.aError.textContent = ex.message;
+      el.aError.hidden = false;
+      el.aYes.disabled = false;
     }
   });
 
