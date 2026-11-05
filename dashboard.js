@@ -16,7 +16,8 @@ const Dashboard = (function () {
     search: $("dashSearch"), colorBy: $("dashColor"), exportBtn: $("dashExport"),
     varBtn: $("varBtn"), varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
     varStats: $("varStats"), varNote: $("varNote"), varTable: $("varTable"), varBody: $("varBody"),
-    varShortN: $("varShortN"), varOverN: $("varOverN"), varTabs: [...document.querySelectorAll("[data-var]")],
+    varShortN: $("varShortN"), varOverN: $("varOverN"), varNoneN: $("varNoneN"), varTabs: [...document.querySelectorAll("[data-var]")],
+    varSearch: $("varSearch"), varBack: $("varBack"), stock6Sync: $("stock6Sync"),
     kShelves: $("kShelves"), kBoxes: $("kBoxes"), kMiss: $("kMiss"), kMissWrap: $("kMissWrap"),
     kSkus: $("kSkus"), kFill: $("kFill"),
     map: $("rackMap"), mapReset: $("mapReset"),
@@ -416,6 +417,21 @@ const Dashboard = (function () {
   const EDIT_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M10.8 2.7l2.5 2.5L6 12.5l-3.2.7.7-3.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9.3 4.2l2.5 2.5" stroke="currentColor" stroke-width="1.4"/></svg>';
   const DONE_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  // A copy button: copies its data-copy and shows a tick for a moment.
+  function copyButton(btn) {
+    const was = btn.title;
+    copyText(btn.dataset.copy).then(function () {
+      btn.innerHTML = DONE_ICON;
+      btn.classList.add("done");
+      btn.title = "Copied";
+      setTimeout(function () {
+        btn.innerHTML = COPY_ICON;
+        btn.classList.remove("done");
+        btn.title = was;
+      }, 1200);
+    }).catch(function () { btn.title = "Could not copy"; });
+  }
+
   // The clipboard API only exists on https and localhost. The office copy is
   // plain http on the network, so there the old copy command does the job.
   function copyText(value) {
@@ -726,8 +742,8 @@ const Dashboard = (function () {
   // form closes itself.
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape" || el.skuDialog.open || el.askDialog.open) return;
-    if (!el.varModal.hidden) closeVariance();
-    else if (!el.detail.hidden) closeDetail();
+    if (!el.detail.hidden) closeDetail();
+    else if (!el.varModal.hidden) closeVariance();
     else if (!el.pickModal.hidden) closePicker();
     else if (!el.catModal.hidden) closeCategory();
   });
@@ -740,20 +756,7 @@ const Dashboard = (function () {
       return;
     }
     const copy = e.target.closest("button[data-copy]");
-    if (copy) {
-      const was = copy.title;
-      copyText(copy.dataset.copy).then(function () {
-        copy.innerHTML = DONE_ICON;
-        copy.classList.add("done");
-        copy.title = "Copied";
-        setTimeout(function () {
-          copy.innerHTML = COPY_ICON;
-          copy.classList.remove("done");
-          copy.title = was;
-        }, 1200);
-      }).catch(function () { copy.title = "Could not copy"; });
-      return;
-    }
+    if (copy) { copyButton(copy); return; }
     const free = e.target.closest("button[data-free]");
     if (free) { freeShelf(free.dataset.free, Number(free.dataset.freeSku)); return; }
     const edit = e.target.closest("button[data-edit-qty]");
@@ -1125,6 +1128,7 @@ const Dashboard = (function () {
   // picked, coloured by category, scrolled to the start. Rules and SKUs are
   // left alone.
   el.mapReset.addEventListener("click", function () {
+    el.varBack.hidden = true;
     el.search.value = "";
     state.search = "";
     el.colorBy.value = "category";
@@ -1274,8 +1278,8 @@ const Dashboard = (function () {
     const v = { r: r, diff: diff, perBox: perBox, q6: has6 ? q6 : null, kind: "", note: "" };
     if (diff < 0) {
       const gap = -diff;
-      v.gapBoxes = perBox ? Math.ceil(gap / perBox - 1e-9) : null;
-      v.boxes6 = perBox && has6 ? Math.ceil(q6 / perBox - 1e-9) : null;
+      v.gapBoxes = perBox ? Math.max(0, Math.ceil(gap / perBox - 1e-9)) : null;
+      v.boxes6 = perBox && has6 ? Math.max(0, Math.ceil(q6 / perBox - 1e-9)) : null;
       if (!has6) { v.kind = "unknown"; v.note = "6K4 has not been synced yet."; }
       else if (q6 <= 0) { v.kind = "none"; v.note = "No stock in 6K4."; }
       else if (!perBox) { v.kind = "nocount"; v.note = "6K4 has " + fmt(q6) + " qty; fill in Qty/Box to count boxes."; }
@@ -1315,70 +1319,141 @@ const Dashboard = (function () {
   }
 
   const VAR_TONE = { covered: "good", partial: "warn", none: "bad", unknown: "", nocount: "warn", move: "info", keep: "" };
+  // short | over | none (short, with nothing in 6K4).
   let varTab = "short";
+
+  // The categories in the order of the category cards: most SKUs first.
+  function categoryOrder() {
+    const count = new Map();
+    for (const r of state.alloc.results) {
+      const c = catName(r.sku.category);
+      count.set(c, (count.get(c) || 0) + 1);
+    }
+    return [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || Allocate.compareText(a, b));
+  }
+
+  function varRows(all) {
+    const rows = varTab === "none" ? all.short.filter((v) => v.kind === "none") : all[varTab];
+    const q = el.varSearch.value.trim().toLowerCase();
+    return q ? rows.filter((v) => v.r.sku.sku.toLowerCase().indexOf(q) >= 0) : rows;
+  }
 
   function renderVariance() {
     const cat = el.varCat.value || null;
     const all = variances(cat);
     const sum = (list, key) => list.reduce((n, v) => n + (v[key] || 0), 0);
-    const bring = sum(all.short, "bring");
-    const toMove = sum(all.over, "moveBoxes");
-    const noStock = all.short.filter((v) => v.kind === "none").length;
+    const noStock = all.short.filter((v) => v.kind === "none");
     el.varShortN.textContent = all.short.length;
     el.varOverN.textContent = all.over.length;
+    el.varNoneN.textContent = noStock.length;
     el.varStats.innerHTML =
       "<div><dt>Short in 4KB</dt><dd>" + fmt(all.short.length) + ' <span class="sub">SKUs</span></dd></div>' +
-      "<div><dt>Bring from 6K4</dt><dd>" + fmt(bring) + ' <span class="sub">boxes</span></dd></div>' +
-      "<div><dt>Nothing in 6K4</dt><dd>" + fmt(noStock) + ' <span class="sub">SKUs</span></dd></div>' +
+      "<div><dt>Bring from 6K4</dt><dd>" + fmt(sum(all.short, "bring")) + ' <span class="sub">boxes</span></dd></div>' +
+      "<div><dt>Nothing in 6K4</dt><dd>" + fmt(noStock.length) + ' <span class="sub">SKUs</span></dd></div>' +
       "<div><dt>Over in 4KB</dt><dd>" + fmt(all.over.length) + ' <span class="sub">SKUs</span></dd></div>' +
-      "<div><dt>Transfer to 6K4</dt><dd>" + fmt(toMove) + ' <span class="sub">boxes</span></dd></div>';
-    const synced = state.data.skus.some((s) => s.qty6k4 !== null && s.qty6k4 !== undefined);
-    el.varNote.textContent = "Needed = sold per day × " + state.rules.days + " days. " +
-      (synced ? "4KB and 6K4 Qty are live from JSTERP." : "6K4 Qty has not been synced yet: the laptops need extension " + Accounts.EXT_VERSION + ".");
-    el.varNote.classList.toggle("bad-text", !synced);
+      "<div><dt>Transfer to 6K4</dt><dd>" + fmt(sum(all.over, "moveBoxes")) + ' <span class="sub">boxes</span></dd></div>';
+    if (!el.varNote.dataset.held) {
+      const synced = state.data.skus.some((s) => s.qty6k4 !== null && s.qty6k4 !== undefined);
+      el.varNote.textContent = "Needed = sold per day × " + state.rules.days + " days. " +
+        (synced ? "Click a SKU to see where it is on the rack map."
+          : "6K4 Qty has not been synced yet: the laptops need extension " + Accounts.EXT_VERSION + ".");
+      el.varNote.classList.toggle("bad-text", !synced);
+    }
     el.varTabs.forEach((b) => b.classList.toggle("on", b.dataset.var === varTab));
 
-    const rows = all[varTab];
-    const head = varTab === "short"
-      ? ["#", "SKU", "Category", "4KB Qty", "Needed", "Short", "Qty/Box", "Short (boxes)", "6K4 Qty", "6K4 boxes", "Bring from 6K4", "What to do"]
-      : ["#", "SKU", "Category", "4KB Qty", "Needed", "Over", "Qty/Box", "Transfer to 6K4", "Qty to transfer", "What to do"];
-    const num = (n) => '<td class="num">' + (n === null || n === undefined ? '<span class="sub">—</span>' : fmt(n)) + "</td>";
-    el.varTable.innerHTML = "<thead><tr>" + head.map((h, i) => "<th" + (i > 2 && i < head.length - 1 ? ' class="num"' : "") + ">" + h + "</th>").join("") +
-      "</tr></thead><tbody>" + (rows.length ? rows.map(function (v, i) {
-        const s = v.r.sku;
-        const lead = '<td class="num sub">' + (i + 1) + '</td><td class="sku-name"><b>' + esc(s.sku) + "</b></td><td>" +
-          '<i class="cat-dot" style="background:' + categoryColor(s.category) + '"></i>' + esc(catName(s.category)) + "</td>" +
-          num(s.quantity) + num(Math.round(v.r.needed * 100) / 100);
-        const what = '<td><span class="var-what ' + (VAR_TONE[v.kind] || "") + '">' + esc(v.note) + "</span></td>";
-        if (varTab === "short") {
-          return "<tr>" + lead + '<td class="num"><span class="remark short">−' + fmt(-v.diff) + "</span></td>" +
-            num(v.perBox) + num(v.gapBoxes) + num(v.q6) + num(v.boxes6) +
-            '<td class="num"><b>' + (v.bring ? fmt(v.bring) : "") + "</b></td>" + what + "</tr>";
-        }
-        return "<tr>" + lead + '<td class="num"><span class="remark over">+' + fmt(v.diff) + "</span></td>" +
-          num(v.perBox) + '<td class="num"><b>' + (v.moveBoxes ? fmt(v.moveBoxes) : "") + "</b></td>" +
-          num(v.moveBoxes ? v.moveQty : null) + what + "</tr>";
-      }).join("") : '<tr><td colspan="' + head.length + '" class="sub">Nothing ' + (varTab === "short" ? "short" : "over") +
+    const rows = varRows(all);
+    const short = varTab !== "over";
+    const head = short
+      ? ["#", "SKU", "4KB Qty", "Needed", "Short", "Qty/Box", "Short (boxes)", "6K4 Qty", "6K4 boxes", "Bring from 6K4", "What to do"]
+      : ["#", "SKU", "4KB Qty", "Needed", "Over", "Qty/Box", "Transfer to 6K4", "Qty to transfer", "What to do"];
+    const cell = (n) => "<td>" + (n === null || n === undefined ? '<span class="sub">—</span>' : fmt(n)) + "</td>";
+    const line = function (v, i) {
+      const s = v.r.sku;
+      const lead = '<td class="sub">' + (i + 1) + "</td>" +
+        '<td class="sku-name"><span class="sku-wrap"><b>' + esc(s.sku) + "</b>" +
+        '<button type="button" class="copy-btn" data-copy="' + esc(s.sku) + '" title="Copy SKU" aria-label="Copy ' + esc(s.sku) + '">' +
+        COPY_ICON + "</button></span></td>" + cell(s.quantity) + cell(Math.round(v.r.needed * 100) / 100);
+      const what = '<td><span class="var-what ' + (VAR_TONE[v.kind] || "") + '">' + esc(v.note) + "</span></td>";
+      const title = v.r.spots.length ? "On " + v.r.spots.map((p) => p.label).join(", ") + " — click to see it on the rack map"
+        : "Not on any 4KB shelf yet";
+      const open = '<tr data-var-sku="' + v.r.index + '" title="' + esc(title) + '">';
+      if (short) {
+        return open + lead + '<td><span class="remark short">−' + fmt(-v.diff) + "</span></td>" +
+          cell(v.perBox) + cell(v.gapBoxes) + cell(v.q6) + cell(v.boxes6) +
+          "<td><b>" + (v.bring ? fmt(v.bring) : "") + "</b></td>" + what + "</tr>";
+      }
+      return open + lead + '<td><span class="remark over">+' + fmt(v.diff) + "</span></td>" +
+        cell(v.perBox) + "<td><b>" + (v.moveBoxes ? fmt(v.moveBoxes) : "") + "</b></td>" +
+        cell(v.moveBoxes ? v.moveQty : null) + what + "</tr>";
+    };
+
+    // One group per category, like the SKU list, with what the group comes to.
+    let body = "";
+    for (const c of categoryOrder()) {
+      const group = rows.filter((v) => catName(v.r.sku.category) === c);
+      if (!group.length) continue;
+      const total = short ? fmt(sum(group, "bring")) + " box" + (sum(group, "bring") === 1 ? "" : "es") + " to bring from 6K4"
+        : fmt(sum(group, "moveBoxes")) + " box" + (sum(group, "moveBoxes") === 1 ? "" : "es") + " to transfer to 6K4";
+      body += '<tr class="var-group"><td colspan="' + head.length + '"><i class="cat-dot" style="background:' +
+        categoryColor(group[0].r.sku.category) + '"></i><b>' + esc(c) + '</b><span class="sub"> · ' + group.length +
+        " SKU" + (group.length === 1 ? "" : "s") + (varTab === "none" ? "" : " · " + total) + "</span></td></tr>" +
+        group.map(line).join("");
+    }
+    const empty = { short: "short", over: "over", none: "short with nothing in 6K4" }[varTab];
+    el.varTable.innerHTML = "<thead><tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+      (body || '<tr><td colspan="' + head.length + '" class="sub">No SKU ' + empty +
+        (el.varSearch.value.trim() ? ' matching “' + esc(el.varSearch.value.trim()) + '”' : "") +
         (cat ? " in " + esc(cat) : "") + ".</td></tr>") + "</tbody>";
   }
 
   function openVariance() {
-    const cats = [...new Set(state.data.skus.map((s) => catName(s.category)))].sort(Allocate.compareText);
     const keep = el.varCat.value;
     el.varCat.innerHTML = '<option value="">All categories</option>' +
-      cats.map((c) => '<option value="' + esc(c) + '"' + (c === keep ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+      categoryOrder().map((c) => '<option value="' + esc(c) + '"' + (c === keep ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+    el.varBack.hidden = true;
     el.varModal.hidden = false;
     renderVariance();
-    el.varBody.scrollTop = 0;
   }
 
   function closeVariance() { el.varModal.hidden = true; }
 
+  // A short word in the note line, then back to what it said.
+  let varNoteTimer = null;
+  function varSay(text) {
+    clearTimeout(varNoteTimer);
+    el.varNote.dataset.held = "1";
+    el.varNote.textContent = text;
+    el.varNote.classList.add("bad-text");
+    varNoteTimer = setTimeout(function () { delete el.varNote.dataset.held; renderVariance(); }, 4000);
+  }
+
+  // The SKU's shelves lit up on the rack map, the rest dimmed; the report
+  // waits behind the Back button.
+  function showOnMap(r) {
+    if (!r.spots.length) { varSay(r.sku.sku + " is not on any 4KB shelf yet."); return; }
+    closeVariance();
+    el.search.value = r.sku.sku;
+    state.search = r.sku.sku.toLowerCase();
+    renderMap();
+    el.varBack.hidden = false;
+    const first = el.map.querySelector('.cell[data-label="' + r.spots[0].label + '"]');
+    el.map.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (first) first.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }
+
   el.varBtn.addEventListener("click", function () { if (state.data) openVariance(); });
+  el.varBack.addEventListener("click", openVariance);
   el.varClose.addEventListener("click", closeVariance);
   el.varModal.addEventListener("click", function (e) { if (e.target === el.varModal) closeVariance(); });
   el.varCat.addEventListener("change", renderVariance);
+  el.varSearch.addEventListener("input", renderVariance);
   el.varTabs.forEach((b) => b.addEventListener("click", function () { varTab = b.dataset.var; renderVariance(); }));
+  el.varTable.addEventListener("click", function (e) {
+    const copy = e.target.closest("button[data-copy]");
+    if (copy) { copyButton(copy); return; }
+    const tr = e.target.closest("tr[data-var-sku]");
+    if (tr) showOnMap(state.alloc.results[Number(tr.dataset.varSku)]);
+  });
   el.varExport.addEventListener("click", function () {
     if (!Excel.available()) { alert("The spreadsheet library did not load, so the report cannot be written."); return; }
     Excel.variance(variances(el.varCat.value || null), state.rules.days);
@@ -1491,6 +1566,26 @@ const Dashboard = (function () {
     el.stockSync.innerHTML = text;
     el.stockSync.classList.toggle("bad-text", !n.ok || age > STOCK_STALE);
     el.stockSync.classList.toggle("stock-down", !n.ok || age > STOCK_DOWN);
+    renderStock6(n, age);
+  }
+
+  // 6K4 rides along with 4KB: live when the last good run brought it too.
+  function renderStock6(n, age) {
+    const z = n && n.ok && n.info && n.info.zones ? n.info.zones["6k4"] : null;
+    let text;
+    let bad = false;
+    if (!n || !n.synced_at || !n.ok || age > STOCK_STALE) {
+      text = "6K4 Qty is not updating either: it comes with the 4KB sync.";
+      bad = true;
+    } else if (z) {
+      text = "6K4 Qty live from JSTERP \u00b7 updated " + ago(age) + " \u00b7 " + fmt(z.skus) + " SKUs in 6K4";
+    } else {
+      text = "6K4 Qty is not syncing: " + esc((n.info && n.info.deviceName) || "the syncing laptop") +
+        " needs extension " + Accounts.EXT_VERSION + " (Accounts page).";
+      bad = true;
+    }
+    el.stock6Sync.innerHTML = text;
+    el.stock6Sync.classList.toggle("bad-text", bad);
   }
 
   // Age counts from when this page saw a note change, so a PC whose clock
