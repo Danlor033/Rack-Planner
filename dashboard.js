@@ -26,7 +26,7 @@ const Dashboard = (function () {
     pickModal: $("pickModal"), pickTitle: $("pickTitle"), pickSub: $("pickSub"),
     pickMap: $("pickMap"), pickClose: $("pickClose"), pickLegend: $("pickLegend"), pickHint: $("pickHint"),
     mapLegend: $("mapLegend"), soldSync: $("soldSync"), liveSync: $("liveSync"), stockSync: $("stockSync"),
-    jstDialog: $("jstDialog"), jstLink: $("jstLink"),
+    jstDialog: $("jstDialog"),
     catStats: $("catStats"), catModal: $("catModal"), catTitle: $("catTitle"), catClose: $("catClose"), catAdd: $("catAdd"), catBody: $("catBody"),
     skuDialog: $("skuDialog"), skuForm: $("skuForm"), skuFormError: $("skuFormError"),
     skuCancel: $("skuCancel"),
@@ -672,7 +672,8 @@ const Dashboard = (function () {
           const v = s[c.edit];
           return '<td class="num edit-col' + g + '"><input class="cell-in' + (wanting(r, c.edit) ? " want" : "") +
             '" type="number" min="0" step="any" inputmode="decimal" data-sku="' + r.index +
-            '" data-field="' + c.edit + '" value="' + (v === null || v === undefined ? "" : v) + '"></td>';
+            '" data-field="' + c.edit + '" value="' + (v === null || v === undefined ? "" : v) + '"' +
+            (Auth.canEdit() ? "" : " readonly") + "></td>";
         }
         return '<td class="' + (c.cls || "num") + g + '" data-w="' + c.worked + '">' + worked(c.worked, r) + "</td>";
       }).join("");
@@ -1044,7 +1045,7 @@ const Dashboard = (function () {
 
   el.skuTable.addEventListener("change", function (e) {
     const input = e.target.closest("input[data-field]");
-    if (!input) return;
+    if (!input || !Auth.canEdit()) return;
     const r = state.alloc.results[Number(input.dataset.sku)];
     const field = input.dataset.field;
     const raw = input.value.trim();
@@ -1132,6 +1133,7 @@ const Dashboard = (function () {
   // list still apply.
   let saveTimer = null;
   function ruleChanged() {
+    if (!Auth.canEdit()) return;
     const days = Math.round(Number(el.ruleDays.value));
     state.rules = Object.assign({}, state.rules, {
       days: days >= 1 && days <= 365 ? days : state.rules.days,
@@ -1316,9 +1318,8 @@ const Dashboard = (function () {
   // --- 4KB Qty from JSTERP --------------------------------------------------------
 
   // The numbers themselves arrive as SKU changes (see below); this only says
-  // how fresh they are. The Chrome extension, in any Chrome that is open and
-  // signed in to JSTERP, writes them every 30 seconds and leaves a note in
-  // rack_sync each time. Two minutes without
+  // how fresh they are. The Chrome extension on whichever laptop's turn it is
+  // writes them every 30 seconds and leaves a note in rack_sync each time. Two minutes without
   // one and the feed is taken to have stopped; ten, or a failed run, and the
   // line becomes a red alert.
   const STOCK_FEED = "jsterp-4kb";
@@ -1350,7 +1351,7 @@ const Dashboard = (function () {
     if (!n.ok) {
       text = "4KB Qty is not updating: " + esc(n.message || "unknown") + setup;
     } else if (age > STOCK_STALE) {
-      text = "4KB Qty last updated " + ago(age) + " \u2014 no Chrome with the sync extension is open." + setup;
+      text = "4KB Qty last updated " + ago(age) + " \u2014 no laptop with the sync extension has Chrome open." + setup;
     } else {
       text = "4KB Qty live from JSTERP \u00b7 updated " + ago(age) +
         (info.skus !== undefined ? " \u00b7 " + fmt(info.skus) + " SKUs in 4KB" : "") +
@@ -1397,16 +1398,6 @@ const Dashboard = (function () {
     });
   }
 
-  // The bookmark, for running the feed from a JSTERP tab in a browser without
-  // the extension. It always loads the online copy of jstsync.js: JSTERP is https and
-  // will not run a script from the office's plain-http address.
-  const JST_SCRIPT = "https://rack-planner-acce.pages.dev/jstsync.js";
-  el.jstLink.href = "javascript:(function(){var s=document.createElement('script');s.src='" +
-    JST_SCRIPT + "?t='+Date.now();document.head.appendChild(s);})();";
-  el.jstLink.addEventListener("click", function (e) {
-    e.preventDefault();
-    alert("Drag this button to your bookmarks bar instead of clicking it here.");
-  });
   el.stockSync.addEventListener("click", function (e) {
     if (!e.target.closest("[data-jst-setup]")) return;
     e.preventDefault();

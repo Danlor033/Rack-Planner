@@ -15,13 +15,39 @@ const DB = (function () {
     return typeof SUPABASE_URL === "string" && SUPABASE_URL.indexOf("https://") === 0 && !!SUPABASE_KEY;
   }
 
+  // One Supabase client for the whole page: it holds the sign-in (kept in
+  // this browser between visits) and the live connection.
+  let sbClient = null;
+  function client() {
+    if (!sbClient && configured() && window.supabase && window.supabase.createClient) {
+      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, storageKey: "rackPlanner.auth" },
+      });
+    }
+    return sbClient;
+  }
+
+  // The signed-in person's token, refreshed when it runs out; null when
+  // nobody is signed in, and the publishable key alone is sent.
+  async function token() {
+    const c = client();
+    if (!c) return null;
+    const { data } = await c.auth.getSession();
+    return data.session ? data.session.access_token : null;
+  }
+
+  async function headers(extra) {
+    const t = await token();
+    return Object.assign({}, SB_HEADERS, t ? { Authorization: "Bearer " + t } : {}, extra || {});
+  }
+
   async function rest(table, options) {
     const opts = options || {};
     const url = SUPABASE_URL + "/rest/v1/" + table + (opts.query || "");
     const prefer = opts.prefer || (opts.method === "POST" || opts.method === "PATCH" ? "return=representation" : null);
     const res = await fetch(url, {
       method: opts.method || "GET",
-      headers: Object.assign({}, SB_HEADERS, prefer ? { Prefer: prefer } : {}),
+      headers: await headers(prefer ? { Prefer: prefer } : null),
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     if (!res.ok) {
@@ -334,6 +360,69 @@ const DB = (function () {
     },
   };
 
+  // --- sign-ins and who may do what ----------------------------------------------
+
+  async function rpc(name, args) {
+    return rest("rpc/" + name, { method: "POST", body: args || {}, prefer: "return=representation" });
+  }
+
+  // "require_sign_in": false while anyone with the link may use Rack Planner.
+  const settings = {
+    async requireSignIn() {
+      if (!configured()) return false;
+      const rows = await rest("rack_settings", { query: "?select=value&key=eq.require_sign_in" });
+      return !!(rows[0] && rows[0].value === true);
+    },
+    async setRequireSignIn(on) {
+      const rows = await rest("rack_settings", {
+        method: "PATCH", query: "?key=eq.require_sign_in", body: { value: !!on, updated_at: new Date().toISOString() },
+      });
+      if (!rows.length) throw new Error("Only an admin can change this.");
+    },
+  };
+
+  const accounts = {
+    // The signed-in person's own account, or null.
+    async mine(userId) {
+      const rows = await rest("rack_accounts", { query: "?select=*&user_id=eq." + encodeURIComponent(userId) });
+      return rows[0] || null;
+    },
+    async hasAdmin() {
+      return !!(await rpc("rack_has_admin"));
+    },
+    // Everything else goes through the rack-accounts edge function, which
+    // holds the key that can make sign-ins.
+    async call(action, fields) {
+      const res = await fetch(SUPABASE_URL + "/functions/v1/rack-accounts", {
+        method: "POST",
+        headers: await headers(),
+        body: JSON.stringify(Object.assign({ action: action }, fields || {})),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || "rack-accounts " + res.status);
+      return out;
+    },
+  };
+
+  // The Chromes with the 4KB sync extension. Each checks in every 30 seconds.
+  const DEVICE_COLUMNS = "id,name,approved,paused,mode,version,platform,jst_user,jst_ok,jst_message," +
+    "last_seen,last_sync_at,last_changed,created_at";
+  const devices = {
+    async list() {
+      if (!configured()) return [];
+      return rest("rack_sync_devices", { query: "?select=" + DEVICE_COLUMNS + "&order=created_at" });
+    },
+    async update(id, fields) {
+      const rows = await rest("rack_sync_devices", {
+        method: "PATCH", query: "?id=eq." + encodeURIComponent(id) + "&select=" + DEVICE_COLUMNS, body: fields,
+      });
+      if (!rows.length) throw new Error("Only an admin can change the laptops.");
+    },
+    async remove(id) {
+      await rest("rack_sync_devices", { method: "DELETE", query: "?id=eq." + encodeURIComponent(id), prefer: "return=minimal" });
+    },
+  };
+
   // --- changes made by anybody, as they happen ---------------------------------
 
   // Supabase Realtime tells every open page at once when a SKU, a shelf
@@ -341,28 +430,36 @@ const DB = (function () {
   // onChange(table, payload) for each change; onStatus("live" | "connecting"
   // | "off") as the connection comes and goes. It reconnects by itself.
   function live(onChange, onStatus) {
-    if (!configured() || !window.supabase || !window.supabase.createClient) {
+    const c = client();
+    if (!c) {
       onStatus("off");
       return null;
     }
-    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const channel = client.channel("rack-planner");
+    const channel = c.channel("rack-planner");
     [IMPORT_TABLE, SKU_TABLE, SHELF_TABLE, SYNC_TABLE].forEach(function (table) {
       channel.on("postgres_changes", { event: "*", schema: "public", table: table }, function (payload) {
         onChange(table, payload);
       });
     });
-    channel.subscribe(function (status) {
-      onStatus(status === "SUBSCRIBED" ? "live"
-        : status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED" ? "off" : "connecting");
+    // Changes reach only those allowed to read them, so the live connection
+    // carries the sign-in from the start.
+    token().then(function (t) {
+      if (t) c.realtime.setAuth(t);
+      channel.subscribe(function (status) {
+        onStatus(status === "SUBSCRIBED" ? "live"
+          : status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED" ? "off" : "connecting");
+      });
     });
     return channel;
   }
 
   return {
     configured: configured,
+    client: client,
+    rpc: rpc,
+    settings: settings,
+    accounts: accounts,
+    devices: devices,
     imports: imports,
     shelves: shelves,
     live: live,

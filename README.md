@@ -271,38 +271,70 @@ locations are added together; a SKU with nothing there gets 0.
 
 JSTERP only answers someone signed in to it (its login is encrypted and can
 ask for a captcha), so no server can read it on its own. Instead a small
-Chrome extension, [`extension/`](extension/), does it in an ordinary Chrome,
-using that Chrome's JSTERP sign-in, with no JSTERP tab open:
+Chrome extension, [`extension/`](extension/), does it in an ordinary Chrome on
+the office laptops, using that Chrome's JSTERP sign-in, with no JSTERP tab
+open.
 
-- While that Chrome is open the extension wakes every 30 seconds, reads the
-  list, writes any 4KB Qty that changed into `rack_skus`, and leaves a note in
-  `rack_sync` (name `jsterp-4kb`).
-- Any number of Chromes can have it, and any one of them open and signed in
-  keeps the numbers right for everybody. A signed-out one stays quiet while
-  another is still syncing.
-- Every Racks page shows that note under the title, live. It turns orange
-  after two minutes without one, and a red alert after ten or when a run
-  fails. Signed out of JSTERP: the extension also shows a notification on that
-  PC, and its toolbar button shows a red **!**.
+- Every 30 seconds each laptop checks in (`jst_checkin`), and Rack Planner
+  answers whose turn it is. One laptop syncs: it reads the list and sends it
+  (`jst_sync`), which writes any 4KB Qty that changed into `rack_skus` and
+  leaves a note in `rack_sync` (name `jsterp-4kb`). The others stand by,
+  asking JSTERP for one row to be sure they are still signed in. When no
+  laptop has synced for 45 seconds, the next to check in takes over.
+- Every laptop is listed on the **Accounts** page: its JSTERP account, whether
+  it is syncing, on standby, signed out or offline, and its extension version.
+  An admin can rename, approve, pause or remove it there.
+- Each laptop holds a random secret; Rack Planner keeps only its hash. A
+  laptop needs approving only once sign-in is required (see below).
+- Every Racks page shows the note under the title, live. It turns orange after
+  two minutes without one, and a red alert after ten or when no laptop can
+  reach JSTERP. A laptop signed out of JSTERP also shows a notification and a
+  red **!** on its toolbar button.
+- All the times are the database's, not the laptops': OLT-0285's own clock
+  was found about 95 seconds slow (2026-11-05).
 
 An empty list from JSTERP counts as a failed run: 4KB Qty is left as it is
 rather than set to 0 for every SKU.
 
-To add it to a Chrome: go to `chrome://extensions`, turn on **Developer
-mode**, click **Load unpacked** and choose the `extension` folder (copy it to
-that PC first). Sign in to JSTERP in that Chrome. Chrome loads the extension
-from that folder, so moving it means loading it again, and a change to its
-files takes effect when Chrome restarts or you click reload on that page.
-
-`jstsync.js` does the same job from a signed-in JSTERP tab, started from the
-bookmark in the **Set up** window, for a browser without the extension. It
-loads from the online copy (rack-planner-acce.pages.dev), because JSTERP is
-https and will not run a script from the office's plain-http address.
+To add a laptop, follow **Accounts > 4KB sync laptops > Add a laptop**: the
+**Download the extension** button there gives a zip of `extension/`. Chrome
+loads an unpacked extension from its folder, so the folder has to stay, and a
+change to its files takes effect when the extension is reloaded in
+`chrome://extensions` or Chrome restarts. After changing anything in
+`extension/`, raise its version in `manifest.json` and `EXT_VERSION` in
+`accounts.js`, then run `python tools/pack_extension.py` to rebuild
+`extension-pack.js` (the zip's contents: the online copy only serves files at
+the top of the folder).
 
 The JSTERP filter ids (owner Shigetsu = LinkCoIds 12697134 / LinkWarehouseIds
-3948, warehouse 3938) are at the top of `extension/background.js` and
-`jstsync.js`. `extension/rules.json` makes the extension's request look like
-it comes from JSTERP's own page.
+3948, warehouse 3938) are at the top of `extension/background.js`.
+`extension/rules.json` makes the extension's request look like it comes from
+JSTERP's own page.
+
+## Accounts and sign-in
+
+People sign in with an email and password (Supabase Auth). Each has a role in
+`rack_accounts`:
+
+| Role | Can |
+| --- | --- |
+| Admin | everything, and the Accounts page: people, sign-in, laptops |
+| Editor | change SKUs, shelves, quantities and the days of stock |
+| Viewer | look only |
+
+The first admin is made on the Accounts page while there is none; after that
+admins add everyone, with a password to start with that each person can change
+under their name, top right. Accounts are made, changed and removed only by the
+`rack-accounts` edge function ([`supabase/functions/rack-accounts`](supabase/functions/rack-accounts/index.ts)),
+which holds the key that can make sign-ins and checks that the caller is an
+admin. It will not remove or demote the last admin.
+
+**Require sign-in** (Accounts page, `rack_settings.require_sign_in`) decides
+what anyone without an account gets. Off, Rack Planner works as it always did:
+open to anyone with the link, signing in optional. On, the page shows only the
+sign-in window, and the database itself refuses every read and write from
+anyone without an account, and from viewers every write. The rules are the
+`rack_can_read()` / `rack_can_edit()` policies on every table.
 
 ## Sharing through Supabase
 
@@ -313,9 +345,8 @@ and point the app at the project:
 1. Run [`sql/schema.sql`](sql/schema.sql) in the Supabase SQL editor.
 2. Put that project's URL and **publishable** key into `config.js`.
 
-The app notices by itself. Note that the tables are reachable with the publishable key by
-anyone who can open the page; `sql/schema.sql` explains the trade and what to
-change if the app ever gains a login.
+The app notices by itself. Until **Require sign-in** is on, the tables are
+reachable with the publishable key by anyone who can open the page.
 
 ## The files
 
@@ -326,10 +357,13 @@ change if the app ever gains a login.
 | `allocate.js` | How many of a SKU's boxes go on each shelf it was given. No DOM -- testable on its own. |
 | `excel.js` | The put-away export (SheetJS). Also an unused sheet reader, from when there was an Import page. |
 | `extension/` | Not loaded by the app: the Chrome extension that copies the 4KB Qty from Zone Inventory every 30 seconds. |
-| `jstsync.js` | Not loaded by the app: the same job from a JSTERP tab, started from a bookmark. |
+| `extension-pack.js` | The extension's files, for the download button. Made by `tools/pack_extension.py`; do not edit. |
+| `auth.js` | Signing in, the account button top right, and what the signed-in person may do. |
+| `accounts.js` | The Accounts page: people, require sign-in, the sync laptops, the extension download. |
+| `supabase/functions/rack-accounts/` | The edge function that makes and changes accounts. |
 | `soldsheet.js` | Reads sold per day from the Google Sheet (column D, by the SKU in column A). |
 | `dashboard.js` | The racks page: map, shelf detail, SKU list by category, adding and removing SKUs, rules. |
-| `pages.js` | Switching between Racks and Calculator. |
+| `pages.js` | Switching between Racks, Calculator and Accounts, once Auth lets the page open. |
 | `view3d.js` | The 3D rack, on three.js. One instanced cube per box. |
 | `view2d.js` | The calculator's plan view, on a plain 2D canvas. |
 | `db.js` | Racks, presets and the SKU list, through Supabase or this browser. |

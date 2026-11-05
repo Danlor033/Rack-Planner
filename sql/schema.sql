@@ -114,7 +114,7 @@ create policy rack_shelves_all on rack_shelves
   for all to anon, authenticated using (true) with check (true);
 
 -- What an outside feed last did: one row per feed, rewritten each run.
--- "jsterp-4kb" is the 4KB Qty from JSTERP (jstsync.js), every 30 seconds.
+-- "jsterp-4kb" is the 4KB Qty from JSTERP (extension/), every 30 seconds.
 create table if not exists rack_sync (
   name       text primary key,
   synced_at  timestamptz,
@@ -131,3 +131,20 @@ create policy rack_sync_all on rack_sync
 
 -- Live changes: every open page hears about these at once.
 -- alter publication supabase_realtime add table rack_imports, rack_skus, rack_shelves, rack_sync;
+
+-- ---------------------------------------------------------------------------
+-- Accounts, sign-in and the sync laptops (migrations
+-- rack_accounts_and_sync_laptops and rack_sync_standby_window, 2026-11-05).
+-- In short:
+--   rack_accounts      user_id -> role (admin | editor | viewer), disabled.
+--                      Written only by the rack-accounts edge function.
+--   rack_settings      require_sign_in (jsonb true / false).
+--   rack_sync_devices  one row per Chrome with the extension; secret_hash is
+--                      readable by nobody.
+--   rack_role(), rack_open(), rack_can_read(), rack_can_edit(),
+--   rack_has_admin()   what every table's policies ask. While
+--                      require_sign_in is false, rack_open() is true and
+--                      everything stays as open as it was.
+--   jst_checkin(), jst_sync()  the extension's only way in, callable without
+--                      signing in; they check the laptop's secret.
+-- The migrations hold the full definitions.

@@ -6,7 +6,7 @@
 <title>Rack Planner</title>
 <!-- Tab icon: the top bar's mark, kept in the page so every copy has it. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3CclipPath id='r'%3E%3Crect width='32' height='32' rx='8'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23r%29'%3E%3Cpath d='M0 0H32L0 32Z' fill='%232f6fed'/%3E%3Cpath d='M32 32H0L32 0Z' fill='%2317a673'/%3E%3Cpath d='M-2 34L34 -2' stroke='%23fff' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E" />
-<link rel="stylesheet" href="style.css?v=2026-10-31e" />
+<link rel="stylesheet" href="style.css?v=2026-11-05b" />
 </head>
 <body>
 
@@ -21,8 +21,12 @@
   <nav class="nav" aria-label="Pages">
     <button class="nav-btn" data-page="racks" type="button">Racks</button>
     <button class="nav-btn" data-page="calc" type="button">Calculator</button>
+    <button class="nav-btn" data-page="accounts" id="acctNav" type="button" hidden>Accounts</button>
   </nav>
-  <button id="themeBtn" class="ghost" type="button" title="Light or dark">Dark</button>
+  <div class="top-acts">
+    <button id="acctBtn" class="ghost acct-btn" type="button" hidden>Sign in</button>
+    <button id="themeBtn" class="ghost" type="button" title="Light or dark">Dark</button>
+  </div>
 </header>
 
 <!-- ============================ Racks dashboard ============================ -->
@@ -186,22 +190,20 @@
         <h3 id="jstTitle">4KB Qty from JSTERP, every 30 seconds</h3>
         <div class="ask-body">
           <p>JSTERP only shows stock to someone signed in, so the numbers are read by a Chrome
-            extension. Any open Chrome that has it and is signed in to JSTERP keeps them updated for
-            everyone. No JSTERP tab is needed.</p>
+            extension on the office laptops. Any of them with Chrome open and signed in to JSTERP keeps
+            the numbers updated for everyone, with no JSTERP tab open. One syncs at a time; if it stops,
+            another takes over within a minute.</p>
           <p><b>If this line turns red:</b></p>
           <ol>
-            <li>Open Chrome on a PC that has the extension, such as OLT-0285.</li>
+            <li>Open Chrome on a laptop that has the extension.</li>
             <li>If it says signed out, sign in to
               <a href="https://asia-web.jsterp.com/" target="_blank" rel="noopener">JSTERP</a> in that
               Chrome. The next run, within 30 seconds, picks it up.</li>
           </ol>
+          <p class="sub">Each laptop, its JSTERP account and whether it is syncing are on the
+            <b>Accounts</b> page, which also has the extension to install on another laptop.</p>
           <p class="sub">It reads Zone Inventory with owner Shigetsu, Main Warehouse, start position
             4KB, and adds each SKU&rsquo;s locations together. A SKU with nothing there gets 0.</p>
-          <p class="sub">In a browser without the extension, a signed-in JSTERP tab can stand in: drag this to
-            your bookmarks bar, open
-            <a href="https://asia.jsterp.com/Wms/Pack/PackItem" target="_blank" rel="noopener">Zone Inventory</a>,
-            click it and leave the tab open.
-            <a class="jst-bookmark" id="jstLink" href="#">Rack Planner 4KB sync</a></p>
         </div>
         <div class="row-btns">
           <button class="primary" value="ok" type="submit">Close</button>
@@ -339,20 +341,131 @@
 </main>
 </section>
 
+<!-- =============================== Accounts =============================== -->
+<section class="page" id="page-accounts" hidden>
+  <div class="acct">
+    <div class="dash-head">
+      <div>
+        <h2>Accounts</h2>
+        <p class="sub">Who can use Rack Planner, and the laptops that keep the 4KB Qty in step with JSTERP.</p>
+      </div>
+    </div>
+    <p class="acct-note sub" id="acctNote" hidden></p>
+
+    <div class="card acct-card" id="acctBoot" hidden>
+      <h3>Make the first admin account</h3>
+      <p class="sub">Rack Planner has no accounts yet. The first one is an admin, who adds everyone else.
+        Until you require sign-in below, everyone can keep using Rack Planner without one.</p>
+      <form id="bootForm" class="acct-form" autocomplete="on">
+        <label class="field"><span>Your name</span><input name="name" type="text" autocomplete="name" required /></label>
+        <label class="field"><span>Email</span><input name="email" type="email" autocomplete="username" required /></label>
+        <label class="field"><span>Password</span><input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <label class="field"><span>Password again</span><input name="password2" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <p class="bad-text" id="bootError" hidden></p>
+        <div class="row-btns"><button class="primary" type="submit">Make the admin account</button></div>
+      </form>
+    </div>
+
+    <div class="card acct-card" id="acctPeople" hidden>
+      <div class="acct-head">
+        <div><h3>People</h3><p class="sub" id="peopleNote"></p></div>
+        <button class="primary" id="personAdd" type="button">+ Add person</button>
+      </div>
+      <div class="tbl-wrap"><table class="tbl acct-tbl" id="peopleTable"></table></div>
+    </div>
+
+    <div class="card acct-card" id="acctAccess" hidden>
+      <div class="acct-head">
+        <div><h3>Sign-in</h3><p class="sub" id="accessText"></p></div>
+        <button class="primary" id="accessBtn" type="button">Require sign-in</button>
+      </div>
+    </div>
+
+    <div class="card acct-card">
+      <div class="acct-head">
+        <div><h3>4KB sync laptops</h3><p class="sub" id="laptopSum"></p></div>
+        <button class="primary" id="extDownload" type="button">Download the extension</button>
+      </div>
+      <div class="tbl-wrap"><table class="tbl acct-tbl" id="laptopTable"></table></div>
+      <details class="acct-steps">
+        <summary>Add a laptop</summary>
+        <ol>
+          <li>Click <b>Download the extension</b> and unzip it into a folder that stays put, such as
+            <code>Documents\rack-planner-4kb-sync</code>. Chrome reads the extension from there.</li>
+          <li>In Chrome, open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right),
+            click <b>Load unpacked</b> and choose that folder.</li>
+          <li>Sign in to <a href="https://asia-web.jsterp.com/" target="_blank" rel="noopener">JSTERP</a> in the same Chrome.</li>
+          <li>Within 30 seconds the laptop appears here as <i>Laptop N</i>. Rename it, and approve it so it
+            keeps syncing once sign-in is required.</li>
+        </ol>
+        <p class="sub">To update a laptop marked <i>update</i>: download again, replace the files in its
+          folder, and click the reload arrow on the extension in <code>chrome://extensions</code>.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Signing in. Without a Cancel button while Rack Planner requires it. -->
+<dialog class="ask auth-dialog" id="authDialog" aria-labelledby="authTitle">
+  <form id="authForm" autocomplete="on">
+    <h3 id="authTitle">Sign in to Rack Planner</h3>
+    <p class="sub" id="authLocked" hidden>Rack Planner needs an account. Ask an admin if you do not have one.</p>
+    <label class="field"><span>Email</span><input id="authEmail" type="email" autocomplete="username" required /></label>
+    <label class="field"><span>Password</span><input id="authPassword" type="password" autocomplete="current-password" required /></label>
+    <p class="bad-text" id="authError" hidden></p>
+    <div class="row-btns">
+      <button class="ghost" type="button" id="authCancel">Cancel</button>
+      <button class="primary" type="submit" id="authSubmit">Sign in</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The signed-in person: their role, a new password, signing out. -->
+<dialog class="ask" id="meDialog" aria-labelledby="meName">
+  <h3 id="meName">&nbsp;</h3>
+  <p class="sub"><span id="meEmail"></span> &middot; <span id="meRole"></span></p>
+  <form id="meForm" class="acct-form">
+    <label class="field"><span>New password</span><input id="mePw" type="password" autocomplete="new-password" /></label>
+    <label class="field"><span>New password again</span><input id="mePw2" type="password" autocomplete="new-password" /></label>
+    <p class="bad-text" id="mePwError" hidden></p>
+    <p class="good-text" id="mePwDone" hidden>Password changed.</p>
+    <div class="row-btns">
+      <button class="ghost" type="button" id="meSignOut">Sign out</button>
+      <button class="ghost" type="submit">Change password</button>
+      <button class="primary" type="button" id="meClose">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Adding a person, or giving one a new password. -->
+<dialog class="ask" id="acctDialog" aria-labelledby="acctFormTitle">
+  <form id="acctForm" class="acct-form" autocomplete="off">
+    <h3 id="acctFormTitle">&nbsp;</h3>
+    <div id="acctFormBody"></div>
+    <p class="bad-text" id="acctFormError" hidden></p>
+    <div class="row-btns">
+      <button class="ghost" type="button" id="acctFormCancel">Cancel</button>
+      <button class="primary" type="submit" id="acctFormSave">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=2026-10-31e"></script>
-<script src="packer.js?v=2026-10-31e"></script>
-<script src="layout.js?v=2026-10-31e"></script>
-<script src="allocate.js?v=2026-10-31e"></script>
+<script src="config.js?v=2026-11-05b"></script>
+<script src="packer.js?v=2026-11-05b"></script>
+<script src="layout.js?v=2026-11-05b"></script>
+<script src="allocate.js?v=2026-11-05b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="db.js?v=2026-10-31e"></script>
-<script src="excel.js?v=2026-10-31e"></script>
-<script src="view3d.js?v=2026-10-31e"></script>
-<script src="view2d.js?v=2026-10-31e"></script>
-<script src="app.js?v=2026-10-31e"></script>
-<script src="soldsheet.js?v=2026-10-31e"></script>
-<script src="dashboard.js?v=2026-10-31e"></script>
-<script src="pages.js?v=2026-10-31e"></script>
+<script src="db.js?v=2026-11-05b"></script>
+<script src="excel.js?v=2026-11-05b"></script>
+<script src="view3d.js?v=2026-11-05b"></script>
+<script src="view2d.js?v=2026-11-05b"></script>
+<script src="app.js?v=2026-11-05b"></script>
+<script src="soldsheet.js?v=2026-11-05b"></script>
+<script src="dashboard.js?v=2026-11-05b"></script>
+<script src="auth.js?v=2026-11-05b"></script>
+<script src="accounts.js?v=2026-11-05b"></script>
+<script src="pages.js?v=2026-11-05b"></script>
 </body>
 </html>

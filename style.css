@@ -126,7 +126,7 @@ input, select, button {
   color: var(--ink);
 }
 
-input[type="number"], input[type="text"], select {
+input[type="number"], input[type="text"], input[type="email"], input[type="password"], select {
   width: 100%;
   padding: 7px 9px;
   background: var(--bg);
@@ -134,7 +134,7 @@ input[type="number"], input[type="text"], select {
   border-radius: 8px;
 }
 
-input[type="number"]:focus, input[type="text"]:focus, select:focus {
+input[type="number"]:focus, input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus, select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
   border-color: transparent;
@@ -763,3 +763,57 @@ body.detail-open, body.cat-open { overflow: hidden; }
   #page-racks, #page-import { padding: 12px; }
 }
 .tbl tr.just-added td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ==================================================================
+   Sign-in and the Accounts page
+   ================================================================== */
+
+.top-acts { display: flex; align-items: center; gap: 8px; }
+.acct-btn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Locked until someone signs in: only the top bar and the sign-in window. */
+body.locked .page, body.locked .nav, body.locked #acctBtn { display: none !important; }
+.auth-dialog { width: min(380px, calc(100vw - 32px)); }
+.auth-dialog .field input { width: 100%; }
+
+/* A viewer sees everything and changes nothing. */
+body.read-only #skuAdd, body.read-only #catAdd, body.read-only .loc-pick, body.read-only .loc-free,
+body.read-only .edit-btn, body.read-only #presetSave, body.read-only #presetDel,
+body.read-only #rackSave, body.read-only #rackDel { display: none !important; }
+body.read-only .tbl input.cell-in[readonly] { pointer-events: none; }
+
+.acct { display: flex; flex-direction: column; gap: 16px; padding: 20px; max-width: 1200px; width: 100%; margin: 0 auto; }
+.acct-card { padding: 16px 18px; }
+.acct-card h3 { margin: 0 0 2px; font-size: 16px; }
+.acct-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.acct-head > div { flex: 1 1 360px; }
+.acct-note { margin: 0; }
+.acct-form { max-width: 420px; }
+.acct-form .field input, .acct-form .field select { width: 100%; }
+.acct-tbl td { vertical-align: middle; }
+.acct-tbl td.acts { text-align: right; white-space: nowrap; }
+.acct-tbl td.acts button { margin-left: 6px; }
+.acct-tbl tr.off td { opacity: .6; }
+.acct-tbl .name-in { width: 100%; max-width: 220px; text-align: left; font-weight: 600; }
+.acct-tbl select { max-width: 160px; }
+.ghost.danger { color: var(--bad); }
+.ghost.danger:hover { border-color: var(--bad); color: var(--bad); }
+.sub.block { display: block; }
+.good-text { color: var(--good); }
+.tag.warn { color: var(--warn); border-color: currentColor; background: transparent; }
+
+/* How a sync laptop is doing. */
+.state { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.state.good { color: var(--good); }
+.state.info { color: var(--accent); }
+.state.warn { color: var(--warn); }
+.state.bad { color: var(--bad); }
+.state.off { color: var(--ink-soft); }
+
+.acct-steps { margin-top: 12px; font-size: 13px; }
+.acct-steps summary { cursor: pointer; font-weight: 600; }
+.acct-steps ol { margin: 8px 0; padding-left: 20px; }
+.acct-steps li { margin-bottom: 6px; }
+.acct-steps a { color: var(--accent); }
+.acct-steps code, .jst-setup code { font-size: 12px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }

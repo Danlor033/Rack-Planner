@@ -1,21 +1,22 @@
 // 4KB Qty from JSTERP, every 30 seconds, with no tab open.
 //
 // This runs in Chrome itself, using the JSTERP sign-in of the Chrome it is
-// installed in, for as long as that Chrome is open. Any number of Chromes can
-// have it: each writes only what changed. It reads Warehouse > Zone Inventory -- owner Shigetsu, Main
-// Warehouse, start position 4KB -- adds the quantities up per SKU, and writes
-// any 4KB Qty that changed into Rack Planner. It is jstsync.js without the
-// page: same filter, same note in rack_sync.
+// installed in, for as long as that Chrome is open. Several laptops can have
+// it. Every 30 seconds each one checks in with Rack Planner, which answers
+// whose turn it is: one laptop reads Warehouse > Zone Inventory -- owner
+// Shigetsu, Main Warehouse, start position 4KB -- and sends the quantities;
+// the others only make sure they are still signed in to JSTERP, ready to take
+// over within a minute if it stops. Each laptop is on Rack Planner's
+// Accounts page, where an admin can rename, approve or pause it.
 "use strict";
 
 const SUPABASE_URL = "https://zvzeojcdjafzqunzladl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_ycQbkzbjsiDtitEhZIjvMQ_fGdch1Qp";
-const SYNC_NAME = "jsterp-4kb";
 const STOCK_URL = "https://asia.jsterp.com/wms/Pack/GetPackItemsPages";
+const JST_HOME = "https://asia.jsterp.com/";
 const SIGN_IN_URL = "https://asia-web.jsterp.com/";
 const ALARM = "sync";
 const EVERY_MINUTES = 0.5;
-const STALE = 2 * 60 * 1000;
 
 // The Zone Inventory filters, as JSTERP sends them: owner Shigetsu
 // (LinkCoIds / LinkWarehouseIds), warehouse area Main, start position 4KB,
@@ -30,22 +31,27 @@ class SignedOut extends Error {}
 
 // --- JSTERP -------------------------------------------------------------------
 
-// Every row of the filtered list, all pages.
+async function stockPage(page, size) {
+  const res = await fetch(STOCK_URL, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ RequestModel: FILTER, DataPage: { pageSize: size, pageIndex: page } }),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (e) { /* the sign-in page, not data */ }
+  if (!res.ok || !json || !Array.isArray(json.Data)) {
+    throw new SignedOut("JSTERP did not send the stock list -- signed out? Sign in to JSTERP in this Chrome.");
+  }
+  return json;
+}
+
+// Every row of the filtered list, all pages, added up per SKU.
 async function readStock() {
   const rows = [];
   for (let page = 1; page < 50; page++) {
-    const res = await fetch(STOCK_URL, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ RequestModel: FILTER, DataPage: { pageSize: 1000, pageIndex: page } }),
-    });
-    const text = await res.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch (e) { /* the sign-in page, not data */ }
-    if (!res.ok || !json || !Array.isArray(json.Data)) {
-      throw new SignedOut("JSTERP did not send the stock list -- signed out? Sign in to JSTERP in Chrome.");
-    }
+    const json = await stockPage(page, 1000);
     rows.push.apply(rows, json.Data);
     if (!json.DataPage || json.DataPage.IsLast || !json.Data.length) break;
   }
@@ -54,58 +60,64 @@ async function readStock() {
   if (!rows.length) throw new Error("JSTERP sent an empty stock list, so 4KB Qty was left as it is.");
   // Start position 4KB already narrows it; this keeps anything else out
   // should JSTERP ever read it as "from 4KB onwards".
-  const qty = new Map();
+  const qty = {};
   for (const r of rows) {
     if (!/^4KB/i.test(String(r.Bin || ""))) continue;
     const sku = String(r.SkuId || "").trim().toLowerCase();
     if (!sku) continue;
-    qty.set(sku, (qty.get(sku) || 0) + (Number(r.Qty) || 0));
+    qty[sku] = (qty[sku] || 0) + (Number(r.Qty) || 0);
   }
   return { qty: qty, rows: rows.length };
 }
 
+// Waiting laptops ask for one row: enough to know the sign-in still works,
+// and to keep it from running out.
+async function checkSignedIn() {
+  await stockPage(1, 1);
+}
+
+// Who this Chrome is signed in to JSTERP as, from JSTERP's own cookies.
+// Null in a Chrome that loaded this before the cookies permission was added:
+// it reads its new code from the folder without reloading the manifest.
+async function jstUser() {
+  if (!chrome.cookies) return null;
+  const get = (name) => chrome.cookies.get({ url: JST_HOME, name: name }).then((c) => (c ? decodeURIComponent(c.value) : ""));
+  const [name, login] = await Promise.all([get("u_name"), get("u_login_id")]);
+  return name && login && name !== login ? name + " (" + login + ")" : name || login || null;
+}
+
 // --- Rack Planner (Supabase) -----------------------------------------------------
 
-async function sb(path, options) {
-  const opts = options || {};
-  const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
-    method: opts.method || "GET",
-    headers: Object.assign({ apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-      opts.prefer ? { Prefer: opts.prefer } : {}),
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+async function rpc(name, args) {
+  const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + name, {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(args),
   });
-  if (!res.ok) throw new Error("Rack Planner " + res.status + ": " + (await res.text()).slice(0, 160));
   const text = await res.text();
+  if (!res.ok) {
+    let message = text;
+    try { message = JSON.parse(text).message || text; } catch (e) { /* plain text */ }
+    throw new Error(String(message).slice(0, 160));
+  }
   return text ? JSON.parse(text) : null;
 }
 
-async function plannerSkus() {
-  const head = await sb("rack_imports?select=id&order=imported_at.desc&limit=1");
-  if (!head || !head.length) return [];
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const part = await sb("rack_skus?select=id,sku,quantity&import_id=eq." + head[0].id +
-      "&order=line_no&limit=1000&offset=" + from);
-    out.push.apply(out, part);
-    if (part.length < 1000) break;
-  }
-  return out;
+// This laptop's key to Rack Planner, made the first time it runs. Rack
+// Planner keeps only a hash of it.
+async function secret() {
+  const { secret } = await chrome.storage.local.get("secret");
+  if (secret) return secret;
+  const made = crypto.randomUUID() + crypto.randomUUID();
+  await chrome.storage.local.set({ secret: made });
+  return made;
 }
 
-function report(ok, message, info) {
-  return sb("rack_sync?on_conflict=name", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: { name: SYNC_NAME, synced_at: new Date().toISOString(), ok: ok, message: message, info: info || {} },
-  });
-}
-
-// True while the last note is a good one, from this Chrome or another. One
-// Chrome signed out should not raise the alarm over one that is still syncing.
-async function stillFresh() {
-  const notes = await sb("rack_sync?select=ok,synced_at&name=eq." + SYNC_NAME);
-  const n = notes && notes[0];
-  return !!n && n.ok && Date.now() - new Date(n.synced_at).getTime() < STALE;
+function platform() {
+  const ua = navigator.userAgentData;
+  const os = ua && ua.platform ? ua.platform : navigator.platform;
+  const brand = ua && ua.brands ? ua.brands.find((b) => /Chrome|Edge/.test(b.brand)) : null;
+  return os + (brand ? " · " + brand.brand + " " + brand.version : "");
 }
 
 // --- what the toolbar button shows ---------------------------------------------
@@ -140,39 +152,45 @@ async function round() {
   if (busy) return;
   busy = true;
   try {
-    const stock = await readStock();
-    const skus = await plannerSkus();
-    const known = new Set();
-    const changed = [];
-    for (const s of skus) {
-      const key = String(s.sku || "").trim().toLowerCase();
-      known.add(key);
-      // Not in 4KB at all: none there.
-      const q = stock.qty.get(key) || 0;
-      if (Number(s.quantity) !== q) changed.push({ id: s.id, quantity: q });
-    }
-    // A few at a time.
-    for (let i = 0; i < changed.length; i += 8) {
-      await Promise.all(changed.slice(i, i + 8).map((c) =>
-        sb("rack_skus?id=eq." + c.id, { method: "PATCH", prefer: "return=minimal", body: { quantity: c.quantity } })));
-    }
-    const notInPlanner = [...stock.qty.keys()].filter((k) => !known.has(k));
-    const units = [...stock.qty.values()].reduce((a, b) => a + b, 0);
-    await report(true, null, {
-      via: "extension", skus: stock.qty.size, rows: stock.rows, units: units, changed: changed.length,
-      notInPlanner: notInPlanner.slice(0, 50), notInPlannerCount: notInPlanner.length,
+    const key = await secret();
+    // How JSTERP went last round travels with this check-in.
+    const { jst } = await chrome.storage.local.get("jst");
+    const turn = await rpc("jst_checkin", {
+      p_secret: key, p_version: chrome.runtime.getManifest().version, p_platform: platform(),
+      p_jst_user: await jstUser(), p_ok: jst ? jst.ok : null, p_message: jst ? jst.message || null : null,
     });
-    await chrome.storage.local.remove("warned");
-    await show(true, stock.qty.size + " SKUs, " + units.toLocaleString() + " pcs in 4KB · " +
-      (changed.length ? changed.length + " updated" : "no change") +
-      (notInPlanner.length ? " · " + notInPlanner.length + " not in Rack Planner" : ""));
+    await chrome.storage.local.set({ me: turn });
+    if (turn.mode === "paused") {
+      await show(true, "Paused on Rack Planner's Accounts page.");
+      return;
+    }
+
+    let stock = null;
+    try {
+      if (turn.mode === "sync") stock = await readStock();
+      else await checkSignedIn();
+      await chrome.storage.local.set({ jst: { ok: true } });
+      await chrome.storage.local.remove("warned");
+    } catch (e) {
+      await chrome.storage.local.set({ jst: { ok: false, message: e.message } });
+      if (e instanceof SignedOut) await warnSignedOut(e.message);
+      await show(false, e.message);
+      return;
+    }
+
+    if (turn.mode === "sync") {
+      const info = await rpc("jst_sync", { p_secret: key, p_stock: stock.qty, p_rows: stock.rows });
+      await show(true, "Syncing · " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
+        (info.changed ? info.changed + " updated" : "no change") +
+        (info.notInPlannerCount ? " · " + info.notInPlannerCount + " not in Rack Planner" : ""));
+    } else if (turn.mode === "standby") {
+      await show(true, "Standby: another laptop is syncing. Signed in to JSTERP and ready to take over.");
+    } else {
+      await show(true, "Waiting for an admin to approve this laptop on Rack Planner's Accounts page.");
+    }
   } catch (e) {
     console.error(e);
-    await show(false, e.message);
-    if (e instanceof SignedOut) await warnSignedOut(e.message);
-    try {
-      if (!(await stillFresh())) await report(false, e.message);
-    } catch (err) { /* Rack Planner unreachable too */ }
+    await show(false, "Rack Planner: " + e.message);
   } finally {
     busy = false;
   }
