@@ -132,6 +132,8 @@ async function act(req: Request, body: Record<string, unknown>) {
       await caller(req);
       const { error } = await sb.auth.admin.updateUserById(text(body.user_id), { password: checkPassword(body.password) });
       if (error) throw error;
+      // A "forgot password" request is answered by the new password.
+      await sb.from("rack_password_requests").delete().eq("user_id", text(body.user_id));
       return { ok: true };
     }
 

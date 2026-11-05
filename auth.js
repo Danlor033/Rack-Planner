@@ -40,6 +40,7 @@ const Auth = (function () {
 
   function openSignIn(locked) {
     const d = $("authDialog");
+    showForgot(false);
     $("authCancel").hidden = !!locked;
     $("authLocked").hidden = !locked;
     $("authError").hidden = true;
@@ -75,6 +76,41 @@ const Auth = (function () {
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;
+      btn.disabled = false;
+    }
+  });
+
+  // --- forgot password ----------------------------------------------------------------
+
+  // The same window, the other form: an email, and the admins are told.
+  function showForgot(on) {
+    $("authForm").hidden = on;
+    $("forgotForm").hidden = !on;
+    $("forgotDone").hidden = true;
+    $("forgotError").hidden = true;
+    $("forgotSubmit").disabled = false;
+    if (on) {
+      $("forgotEmail").value = $("authEmail").value.trim();
+      $("forgotEmail").focus();
+    } else {
+      $("authEmail").focus();
+    }
+  }
+
+  $("authForgot").addEventListener("click", function () { showForgot(true); });
+  $("forgotBack").addEventListener("click", function () { showForgot(false); });
+
+  $("forgotForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const btn = $("forgotSubmit");
+    btn.disabled = true;
+    $("forgotError").hidden = true;
+    try {
+      await DB.accounts.requestReset($("forgotEmail").value.trim());
+      $("forgotDone").hidden = false;
+    } catch (ex) {
+      $("forgotError").textContent = "Could not send it: " + ex.message;
+      $("forgotError").hidden = false;
       btn.disabled = false;
     }
   });
@@ -137,12 +173,15 @@ const Auth = (function () {
   async function start() {
     if (!DB.configured() || !DB.client()) { renderButton(); return; }
     try {
+      // The sign-in is kept in this browser, so asking for it costs nothing;
+      // the three questions after it go out together.
       const got = await DB.client().auth.getSession();
       session = got.data.session;
-      const answers = await Promise.all([DB.settings.requireSignIn(), DB.accounts.hasAdmin()]);
+      const answers = await Promise.all([DB.settings.requireSignIn(), DB.accounts.hasAdmin(),
+        session ? DB.accounts.mine(session.user.id) : null]);
       required = answers[0];
       hasAdmin = answers[1];
-      if (session) account = await DB.accounts.mine(session.user.id);
+      account = answers[2];
     } catch (e) {
       console.error(e);
     }

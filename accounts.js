@@ -22,6 +22,7 @@ const Accounts = (function () {
     dError: $("acctFormError"), dSave: $("acctFormSave"), dCancel: $("acctFormCancel"),
     aDialog: $("accessDialog"), aTitle: $("accessTitle"), aBody: $("accessBody"), aError: $("accessError"),
     aYes: $("accessYes"), aNo: $("accessNo"),
+    asks: $("resetAsks"), nav: $("acctNav"),
   };
 
   let people = [];
@@ -118,19 +119,40 @@ const Accounts = (function () {
 
   async function loadPeople() {
     if (!Auth.isAdmin()) { people = []; return; }
-    people = (await DB.accounts.call("list")).accounts;
+    people = await DB.accounts.people();
+  }
+
+  // "Forgot password" requests, newest first, at the top of People and as a
+  // count on the Accounts button.
+  function asking() {
+    return people.filter((p) => p.reset_asked_at && !p.disabled)
+      .sort((a, b) => String(b.reset_asked_at).localeCompare(String(a.reset_asked_at)));
+  }
+
+  function renderBadge() {
+    const n = Auth.isAdmin() ? asking().length : 0;
+    el.nav.innerHTML = "Accounts" + (n ? ' <span class="nav-badge" title="' + n + " asked for a new password\">" + n + "</span>" : "");
   }
 
   function renderPeople() {
     el.people.hidden = !Auth.isAdmin();
     if (el.people.hidden) return;
     const me = Auth.userId();
+    const asks = asking();
+    el.asks.hidden = !asks.length;
+    el.asks.innerHTML = asks.map(function (p) {
+      return '<div class="reset-ask"><span><b>' + esc(p.name || p.email) + "</b> (" + esc(p.email) + ") forgot their password and asked for a new one " +
+        ago(p.reset_asked_at) + ".</span>" +
+        '<button type="button" class="primary small" data-pw="' + p.user_id + '">Set new password</button>' +
+        '<button type="button" class="ghost small" data-dismiss="' + p.user_id + '">Dismiss</button></div>';
+    }).join("");
     el.peopleTable.innerHTML = "<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th></th></tr></thead><tbody>" +
       people.map(function (p) {
         const self = p.user_id === me;
         return '<tr class="' + (p.disabled ? "off" : "") + '">' +
           "<td><b>" + esc(p.name || "") + "</b>" + (self ? ' <span class="tag">you</span>' : "") +
-          (p.disabled ? ' <span class="tag bad">disabled</span>' : "") + "</td>" +
+          (p.disabled ? ' <span class="tag bad">disabled</span>' : "") +
+          (p.reset_asked_at && !p.disabled ? ' <span class="tag warn">asked for a new password</span>' : "") + "</td>" +
           "<td>" + esc(p.email) + "</td>" +
           '<td><select data-role="' + p.user_id + '"' + (self ? ' disabled title="Another admin can change your role"' : "") + ">" +
           ROLE_OPTIONS.map((o) => '<option value="' + o[0] + '"' + (o[0] === p.role ? " selected" : "") + ">" + Auth.ROLE_NAMES[o[0]] + "</option>").join("") +
@@ -170,23 +192,27 @@ const Accounts = (function () {
     await refresh();
   });
 
-  el.peopleTable.addEventListener("click", async function (e) {
+  async function onPersonButton(e) {
     const btn = e.target.closest("button");
     if (!btn) return;
-    const id = btn.dataset.pw || btn.dataset.disable || btn.dataset.remove;
+    const id = btn.dataset.pw || btn.dataset.disable || btn.dataset.remove || btn.dataset.dismiss;
     const p = people.find((x) => x.user_id === id);
     if (!p) return;
     try {
       if (btn.dataset.pw) {
         form("New password for " + (p.name || p.email), [
-          { name: "password", label: "New password", type: "text", required: true, hint: "At least 8 characters." },
+          { name: "password", label: "New password", type: "text", required: true,
+            hint: "At least 8 characters. Tell " + (p.name || "them") + ", and they can change it after signing in." },
         ], "Save", async function (v) {
           await DB.accounts.call("set_password", { user_id: id, password: v.password });
-          say("Password changed for " + (p.name || p.email) + ".");
+          say("Password changed for " + (p.name || p.email) + ". Tell them the new one.");
+          await refresh();
         });
         return;
       }
-      if (btn.dataset.disable) {
+      if (btn.dataset.dismiss) {
+        await DB.accounts.dismissReset(id);
+      } else if (btn.dataset.disable) {
         await DB.accounts.call("update", { user_id: id, disabled: !p.disabled });
         say((p.name || p.email) + (p.disabled ? " can sign in again." : " can no longer sign in."));
       } else {
@@ -198,7 +224,9 @@ const Accounts = (function () {
     } catch (ex) {
       say(ex.message, true);
     }
-  });
+  }
+  el.peopleTable.addEventListener("click", onPersonButton);
+  el.asks.addEventListener("click", onPersonButton);
 
   // --- require sign-in ---------------------------------------------------------------
 
@@ -433,28 +461,63 @@ const Accounts = (function () {
 
   // --- the page --------------------------------------------------------------------------
 
-  async function refresh() {
+  // What was last read is kept for this browser tab, so the page draws at
+  // once when opened and the fresh numbers replace it a moment later.
+  const CACHE = "rackPlanner.accounts";
+  function saveCache() {
     try {
-      const asked = Date.now();
-      const got = await Promise.all([DB.devices.list(), loadPeople(), DB.rpc("rack_now")]);
-      laptops = got[0];
-      skew = new Date(got[2]).getTime() - (asked + Date.now()) / 2;
-    } catch (ex) {
-      say(ex.message, true);
-    }
+      sessionStorage.setItem(CACHE, JSON.stringify({ who: Auth.userId(), people: people, laptops: laptops, skew: skew }));
+    } catch (e) { /* storage blocked: it just reads again */ }
+  }
+  function loadCache() {
+    try {
+      const c = JSON.parse(sessionStorage.getItem(CACHE));
+      if (!c || c.who !== Auth.userId()) return;
+      people = c.people || [];
+      laptops = c.laptops || [];
+      skew = c.skew || 0;
+    } catch (e) { /* nothing kept */ }
+  }
+
+  function render() {
     el.boot.hidden = Auth.hasAdmin();
     renderPeople();
     renderAccess();
     renderLaptops();
+    renderBadge();
+  }
+
+  // Each part is drawn as soon as its own answer is in, not when the slowest is.
+  async function refresh() {
+    const asked = Date.now();
+    const done = await Promise.allSettled([
+      DB.rpc("rack_now").then(function (t) { skew = new Date(t).getTime() - (asked + Date.now()) / 2; }),
+      DB.devices.list().then(function (rows) { laptops = rows; renderLaptops(); }),
+      loadPeople().then(function () { renderPeople(); renderBadge(); }),
+    ]);
+    const failed = done.find((d) => d.status === "rejected");
+    if (failed) say(failed.reason.message, true);
+    renderLaptops();
+    saveCache();
+  }
+
+  // Right after sign-in, for admins: read in the background, so the page is
+  // ready before anyone opens it, and the Accounts button can show requests.
+  function prefetch() {
+    if (!Auth.canManage()) return;
+    loadCache();
+    renderBadge();
+    refresh();
   }
 
   // Called by Pages when the page is opened or left.
   function shown(on) {
     clearInterval(timer);
     if (!on) return;
+    render();
     refresh();
     timer = setInterval(function () { if (!document.hidden) refresh(); }, REFRESH);
   }
 
-  return { shown: shown, EXT_VERSION: EXT_VERSION };
+  return { shown: shown, prefetch: prefetch, EXT_VERSION: EXT_VERSION };
 })();

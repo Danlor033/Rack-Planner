@@ -390,6 +390,21 @@ const DB = (function () {
     async hasAdmin() {
       return !!(await rpc("rack_has_admin"));
     },
+    // Admins: every account, its last sign-in and any "forgot password"
+    // request, in one quick read.
+    async people() {
+      return (await rpc("rack_people")) || [];
+    },
+    // "Forgot password": tells the admins. Answers the same whether or not
+    // the email has an account.
+    async requestReset(email) {
+      await rpc("rack_request_reset", { p_email: email });
+    },
+    async dismissReset(userId) {
+      await rest("rack_password_requests", {
+        method: "DELETE", query: "?user_id=eq." + encodeURIComponent(userId), prefer: "return=minimal",
+      });
+    },
     // Everything else goes through the rack-accounts edge function, which
     // holds the key that can make sign-ins.
     async call(action, fields) {

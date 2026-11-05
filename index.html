@@ -6,7 +6,7 @@
 <title>Rack Planner</title>
 <!-- Tab icon: the top bar's mark, kept in the page so every copy has it. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3CclipPath id='r'%3E%3Crect width='32' height='32' rx='8'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23r%29'%3E%3Cpath d='M0 0H32L0 32Z' fill='%232f6fed'/%3E%3Cpath d='M32 32H0L32 0Z' fill='%2317a673'/%3E%3Cpath d='M-2 34L34 -2' stroke='%23fff' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E" />
-<link rel="stylesheet" href="style.css?v=2026-11-05c" />
+<link rel="stylesheet" href="style.css?v=2026-11-05d" />
 </head>
 <body>
 
@@ -371,6 +371,7 @@
         <div><h3>People</h3><p class="sub" id="peopleNote"></p></div>
         <button class="primary" id="personAdd" type="button">+ Add person</button>
       </div>
+      <div class="reset-asks" id="resetAsks" hidden></div>
       <div class="tbl-wrap"><table class="tbl acct-tbl" id="peopleTable"></table></div>
     </div>
 
@@ -412,10 +413,24 @@
     <p class="sub" id="authLocked" hidden>Rack Planner needs an account. Ask an admin if you do not have one.</p>
     <label class="field"><span>Email</span><input id="authEmail" type="email" autocomplete="username" required /></label>
     <label class="field"><span>Password</span><input id="authPassword" type="password" autocomplete="current-password" required /></label>
+    <button class="link-btn" type="button" id="authForgot">Forgot password?</button>
     <p class="bad-text" id="authError" hidden></p>
     <div class="row-btns">
       <button class="ghost" type="button" id="authCancel">Cancel</button>
       <button class="primary" type="submit" id="authSubmit">Sign in</button>
+    </div>
+  </form>
+  <!-- Forgot password: the admins are told, and one sets a new password. -->
+  <form id="forgotForm" hidden>
+    <h3>Forgot your password?</h3>
+    <p class="sub">Enter your email. The admins see your request on the Accounts page; one of them
+      sets a new password and tells you. You can change it after signing in.</p>
+    <label class="field"><span>Email</span><input id="forgotEmail" type="email" autocomplete="username" required /></label>
+    <p class="good-text" id="forgotDone" hidden>Sent. An admin will set a new password and tell you.</p>
+    <p class="bad-text" id="forgotError" hidden></p>
+    <div class="row-btns">
+      <button class="ghost" type="button" id="forgotBack">Back to sign in</button>
+      <button class="primary" type="submit" id="forgotSubmit">Ask an admin</button>
     </div>
   </form>
 </dialog>
@@ -463,20 +478,20 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=2026-11-05c"></script>
-<script src="packer.js?v=2026-11-05c"></script>
-<script src="layout.js?v=2026-11-05c"></script>
-<script src="allocate.js?v=2026-11-05c"></script>
+<script src="config.js?v=2026-11-05d"></script>
+<script src="packer.js?v=2026-11-05d"></script>
+<script src="layout.js?v=2026-11-05d"></script>
+<script src="allocate.js?v=2026-11-05d"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="db.js?v=2026-11-05c"></script>
-<script src="excel.js?v=2026-11-05c"></script>
-<script src="view3d.js?v=2026-11-05c"></script>
-<script src="view2d.js?v=2026-11-05c"></script>
-<script src="app.js?v=2026-11-05c"></script>
-<script src="soldsheet.js?v=2026-11-05c"></script>
-<script src="dashboard.js?v=2026-11-05c"></script>
-<script src="auth.js?v=2026-11-05c"></script>
-<script src="accounts.js?v=2026-11-05c"></script>
-<script src="pages.js?v=2026-11-05c"></script>
+<script src="db.js?v=2026-11-05d"></script>
+<script src="excel.js?v=2026-11-05d"></script>
+<script src="view3d.js?v=2026-11-05d"></script>
+<script src="view2d.js?v=2026-11-05d"></script>
+<script src="app.js?v=2026-11-05d"></script>
+<script src="soldsheet.js?v=2026-11-05d"></script>
+<script src="dashboard.js?v=2026-11-05d"></script>
+<script src="auth.js?v=2026-11-05d"></script>
+<script src="accounts.js?v=2026-11-05d"></script>
+<script src="pages.js?v=2026-11-05d"></script>
 </body>
 </html>

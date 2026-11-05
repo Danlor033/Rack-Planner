@@ -827,3 +827,22 @@ body:not(.is-admin) #soldSync { display: none; }
   background: color-mix(in srgb, var(--bad) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
 }
+/* Forgot password, and the requests it makes. */
+.link-btn {
+  display: inline-block; margin: -4px 0 8px; padding: 0; border: 0; background: none;
+  color: var(--accent); font-size: 12.5px; cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
+#forgotForm h3 { margin: 0 0 6px; font-size: 18px; }
+#forgotForm .field input { width: 100%; }
+.nav-badge {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 99px;
+  background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.reset-asks { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.reset-ask {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+}
+.reset-ask span { flex: 1 1 300px; }

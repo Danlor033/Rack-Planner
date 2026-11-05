@@ -24,6 +24,8 @@ const Pages = (function () {
   Auth.start().then(function () {
     show(location.hash.slice(1) || "racks");
     Dashboard.start();
+    // Opened already reads it; otherwise have it ready for when it is.
+    if (document.getElementById("page-accounts").hidden) Accounts.prefetch();
   });
 
   return { show: show };

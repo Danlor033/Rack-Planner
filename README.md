@@ -329,6 +329,20 @@ under their name, top right. Accounts are made, changed and removed only by the
 which holds the key that can make sign-ins and checks that the caller is an
 admin. It will not remove or demote the last admin.
 
+**Forgot password** (in the sign-in window) does not send email: Supabase's
+own mail only reaches the project team. The person gives their email and
+
+ack_request_reset() files a request (
+ack_password_requests; it answers the
+same whether or not the email has an account). Admins see it at the top of
+People and as a count on the Accounts button; **Set new password** answers and
+clears it.
+
+The Accounts page reads people in one call (
+ack_people()), draws each part
+as soon as its own answer arrives, keeps the last answers for the browser tab,
+and is read in the background for admins as soon as Rack Planner opens.
+
 **Require sign-in** (Accounts page, `rack_settings.require_sign_in`) decides
 what anyone without an account gets. Off, Rack Planner works as it always did:
 open to anyone with the link, signing in optional. On, the page shows only the
