@@ -41,7 +41,33 @@ const DB = (function () {
     return Object.assign({}, SB_HEADERS, t ? { Authorization: "Bearer " + t } : {}, extra || {});
   }
 
-  async function rest(table, options) {
+  // The server turned the sign-in down as expired, though this browser
+  // thought it still good: its clock runs slow (OLT-0285's was 95 seconds
+  // behind), or the page slept through the renewal. Get a new token and say
+  // to ask again. If the sign-in cannot be renewed it is gone: forget it and
+  // start the page again, signed out, which shows the sign-in window if
+  // Rack Planner needs one. Requests failing together renew once.
+  let renewing = null;
+  function renewSession() {
+    if (!renewing) {
+      renewing = (async function () {
+        const c = client();
+        if (!c) return false;
+        const { data } = await c.auth.getSession();
+        if (!data.session) return false;
+        const got = await c.auth.refreshSession();
+        if (!got.error && got.data.session) return true;
+        await c.auth.signOut({ scope: "local" });
+        location.reload();
+        return new Promise(function () {});
+      })().finally(function () { renewing = null; });
+    }
+    return renewing;
+  }
+
+  const EXPIRED = /JWT expired|PGRST30[0-9]|Sign in again/i;
+
+  async function rest(table, options, again) {
     const opts = options || {};
     const url = SUPABASE_URL + "/rest/v1/" + table + (opts.query || "");
     const prefer = opts.prefer || (opts.method === "POST" || opts.method === "PATCH" ? "return=representation" : null);
@@ -52,6 +78,7 @@ const DB = (function () {
     });
     if (!res.ok) {
       const text = await res.text();
+      if (res.status === 401 && !again && EXPIRED.test(text) && await renewSession()) return rest(table, options, true);
       throw new Error(table + " " + res.status + ": " + text.slice(0, 200));
     }
     // A write asked for "return=minimal" answers 201 with no body at all.
@@ -409,13 +436,16 @@ const DB = (function () {
     },
     // Everything else goes through the rack-accounts edge function, which
     // holds the key that can make sign-ins.
-    async call(action, fields) {
+    async call(action, fields, again) {
       const res = await fetch(SUPABASE_URL + "/functions/v1/rack-accounts", {
         method: "POST",
         headers: await headers(),
         body: JSON.stringify(Object.assign({ action: action }, fields || {})),
       });
       const out = await res.json().catch(() => ({}));
+      if (res.status === 401 && !again && EXPIRED.test(out.error || "") && await renewSession()) {
+        return accounts.call(action, fields, true);
+      }
       if (!res.ok) throw new Error(out.error || "rack-accounts " + res.status);
       return out;
     },
