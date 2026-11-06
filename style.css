@@ -888,3 +888,7 @@ body:not(.is-admin) #soldSync { display: none; }
 .detail-jump { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; }
 .detail-jump .on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .dsku.focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* + Add SKU among the tabs: an action, not a page. */
+.nav-btn.nav-add { color: var(--accent); font-weight: 600; }
+.nav-btn.nav-add:hover { background: var(--accent-soft); }

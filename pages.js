@@ -25,7 +25,8 @@ const Pages = (function () {
     Accounts.shown(name === "accounts");
   }
 
-  document.querySelectorAll(".nav-btn").forEach((b) => b.addEventListener("click", () => show(b.dataset.page)));
+  // + Add SKU sits among the tabs but is no page: the dashboard opens it.
+  document.querySelectorAll(".nav-btn[data-page]").forEach((b) => b.addEventListener("click", () => show(b.dataset.page)));
   document.querySelectorAll("[data-goto]").forEach((b) => b.addEventListener("click", () => show(b.dataset.goto)));
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 

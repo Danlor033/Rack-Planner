@@ -26,7 +26,7 @@ const Dashboard = (function () {
     skuFilter: $("skuFilter"), skuTable: $("skuTable"),
     gap: $("dataGap"), gapText: $("dataGapText"), gapShow: $("dataGapShow"),
     ruleDays: $("ruleDays"), skuStatus: $("skuStatus"),
-    catList: $("catList"), catHint: $("catHint"), skuAdd: $("skuAdd"),
+    catList: $("catList"), catHint: $("catHint"), skuAdd: $("skuAdd"), daysField: $("daysField"),
     pickModal: $("pickModal"), pickTitle: $("pickTitle"), pickSub: $("pickSub"),
     pickMap: $("pickMap"), pickClose: $("pickClose"), pickLegend: $("pickLegend"), pickHint: $("pickHint"),
     mapLegend: $("mapLegend"), soldSync: $("soldSync"), liveSync: $("liveSync"), stockSync: $("stockSync"),
@@ -437,7 +437,7 @@ const Dashboard = (function () {
   // the heading of their group. "edit" makes a number editable in place; the
   // rest are worked out (see worked()) and kept up to date where they stand.
   // w is the width in px; SKU and Locations share what is left.
-  // Named for the zone in use: "4KB Qty" or "6K4 Qty".
+  // Named for the zone in use: "4KB Qty" or "6K4 Qty". 6K4 has no Needed.
   function columns() {
     const Z = Layout.NAME;
     return [
@@ -454,7 +454,7 @@ const Dashboard = (function () {
     { group: "Box size (cm)", head: "W", w: 48, edit: "width" },
     { group: "Box size (cm)", head: "H", w: 48, edit: "height" },
     { head: "Locations", w: 0, worked: "locations", cls: "locs" },
-    ];
+    ].filter((c) => Layout.KEY !== "6k4" || c.worked !== "needed");
   }
 
   // A box that is empty but needed for this SKU to get a shelf.
@@ -1264,7 +1264,12 @@ const Dashboard = (function () {
     el.skuDialog.showModal();
     el.skuForm.querySelector('[name="sku"]').focus();
   }
-  el.skuAdd.addEventListener("click", openAdd);
+  // From the top bar: the form lives on the racks page, so go there first
+  // if another page is showing.
+  el.skuAdd.addEventListener("click", function () {
+    if (document.getElementById("page-racks").hidden) Pages.show(Layout.KEY === "6k4" ? "racks-6k4" : "racks");
+    if (state.data) openAdd();
+  });
   el.catAdd.addEventListener("click", openAdd);
   el.skuCancel.addEventListener("click", function () { el.skuDialog.close(); });
 
@@ -1825,6 +1830,8 @@ const Dashboard = (function () {
     el.title.textContent = Layout.NAME + " racks";
     if (!el.varModal.hidden && key !== "4kb") closeVariance();
     el.zoneNote.hidden = key !== "6k4";
+    // Days of stock decide Needed, which is 4KB's.
+    el.daysField.hidden = key === "6k4";
     if (!el.detail.hidden) closeDetail();
     if (!el.pickModal.hidden) closePicker();
     if (state.category !== null) closeCategory();
