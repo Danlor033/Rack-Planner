@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rack Planner 4KB sync",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Copies the 4KB and 6K4 Qty from JSTERP Zone Inventory into Rack Planner every 30 seconds, with no JSTERP tab open. Several laptops can have it; one syncs at a time.",
   "minimum_chrome_version": "120",
   "permissions": ["alarms", "storage", "notifications", "cookies", "declarativeNetRequestWithHostAccess"],

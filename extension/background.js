@@ -59,7 +59,8 @@ async function stockPage(page, size, filter) {
   return json;
 }
 
-// Every row of one filtered list, all pages, added up per SKU.
+// Every row of one filtered list, all pages, added up per SKU; and, bin by
+// bin, [bin, sku, qty] -- where each SKU sits.
 async function readZone(filter) {
   const rows = [];
   for (let page = 1; page < 50; page++) {
@@ -71,13 +72,16 @@ async function readZone(filter) {
   // JSTERP ever read it as "from here onwards".
   const start = String(filter.BinStart).toUpperCase();
   const qty = {};
+  const bins = [];
   for (const r of rows) {
-    if (String(r.Bin || "").toUpperCase().indexOf(start) !== 0) continue;
+    const bin = String(r.Bin || "").trim();
+    if (bin.toUpperCase().indexOf(start) !== 0) continue;
     const sku = String(r.SkuId || "").trim().toLowerCase();
     if (!sku) continue;
     qty[sku] = (qty[sku] || 0) + (Number(r.Qty) || 0);
+    bins.push([bin, sku, Number(r.Qty) || 0]);
   }
-  return { qty: qty, rows: rows.length };
+  return { qty: qty, bins: bins, rows: rows.length };
 }
 
 // 4KB, then each other zone. 4KB has to come back; a zone that fails only
@@ -88,10 +92,14 @@ async function readStock(zones) {
   // taking it at its word would zero every SKU in Rack Planner.
   if (!stock.rows) throw new Error("JSTERP sent an empty stock list, so 4KB Qty was left as it is.");
   stock.zones = {};
+  stock.bins = {};
   stock.zoneErrors = [];
   for (const zone of zones || []) {
     try {
-      stock.zones[zone.key] = (await readZone(zoneFilter(zone))).qty;
+      const got = await readZone(zoneFilter(zone));
+      stock.zones[zone.key] = got.qty;
+      // Rack Planner plots these zones from JSTERP's own bins.
+      if (zone.bins) stock.bins[zone.key] = got.bins;
     } catch (e) {
       if (e instanceof SignedOut) throw e;
       stock.zoneErrors.push(zone.bin + ": " + e.message);
@@ -209,7 +217,9 @@ async function round() {
     }
 
     if (turn.mode === "sync") {
-      const info = await rpc("jst_sync", { p_secret: key, p_stock: stock.qty, p_rows: stock.rows, p_zones: stock.zones });
+      const info = await rpc("jst_sync", {
+        p_secret: key, p_stock: stock.qty, p_rows: stock.rows, p_zones: stock.zones, p_bins: stock.bins,
+      });
       const z = (info.zones || {})["6k4"];
       await show(!stock.zoneErrors.length, "Syncing · " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
         (z ? Number(z.units).toLocaleString() + " pcs in 6K4 · " : "") +

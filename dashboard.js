@@ -12,9 +12,9 @@ const Dashboard = (function () {
   const TIER_COLORS = ["#17a673", "#2f6fed", "#f0982c", "#e05260", "#8b5cf6", "#0ea5b7", "#64748b"];
 
   const el = {
-    empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"), title: $("dashTitle"),
+    empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"), title: $("dashTitle"), zoneNote: $("zoneNote"),
     search: $("dashSearch"), exportBtn: $("dashExport"),
-    varBtn: $("varBtn"), varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
+    varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
     varStats: $("varStats"), varNote: $("varNote"), varTable: $("varTable"), varBody: $("varBody"),
     varShortN: $("varShortN"), varOverN: $("varOverN"), varNoneN: $("varNoneN"), varTabs: [...document.querySelectorAll("[data-var]")],
     varSearch: $("varSearch"), stock6Sync: $("stock6Sync"),
@@ -142,10 +142,46 @@ const Dashboard = (function () {
 
     buildColors();
     recompute();
+    if (varWanted && el.varModal.hidden) openVariance();
   }
 
+  // 4KB's shelves are the ones picked here; 6K4's are JSTERP's own bins.
   function layout() {
-    return Allocate.place(state.data.skus, state.data.shelves, state.rules);
+    return Allocate.place(state.data.skus, manualZone() ? state.data.shelves : binShelves(), state.rules);
+  }
+
+  // Locations are picked by hand only in 4KB. 6K4's come from JSTERP.
+  function manualZone() {
+    return Layout.KEY !== "6k4";
+  }
+
+  // A JSTERP bin as a shelf label: 6K4-3-2-1, 6K4-03-02-01 and 6K4030201 are
+  // all Row 3, Column 2, Layer 1. Null when it does not read as one.
+  function binLabel(bin) {
+    const m = String(bin).toUpperCase().replace(/\s+/g, "").match(/^6K4-?0*(\d+)-0*(\d+)-0*(\d+)$/);
+    return m ? "6K4-" + m[1] + "-" + m[2] + "-" + m[3] : null;
+  }
+
+  // JSTERP's 6K4 bins as shelf choices, in label order, with the qty JSTERP
+  // has there. Bins that are not a shelf on the map are kept per SKU in
+  // state.offMap, to be shown, not lost.
+  function binShelves() {
+    const idOf = new Map(state.data.skus.map((s) => [String(s.sku).trim().toLowerCase(), s.id]));
+    const order = new Map(Layout.all().map((p, i) => [p.label, i]));
+    const out = [];
+    state.offMap = new Map();
+    for (const b of state.data.bins || []) {
+      const id = idOf.get(b.sku);
+      if (id === undefined) continue;
+      const label = binLabel(b.bin);
+      if (label && order.has(label)) {
+        out.push({ label: label, sku: id, qty: Number(b.qty) > 0 ? Number(b.qty) : null });
+      } else {
+        if (!state.offMap.has(String(id))) state.offMap.set(String(id), []);
+        state.offMap.get(String(id)).push({ bin: b.bin, qty: Number(b.qty) || 0 });
+      }
+    }
+    return out.sort((x, y) => order.get(x.label) - order.get(y.label));
   }
 
   function recompute() {
@@ -167,6 +203,13 @@ const Dashboard = (function () {
 
   function renderKpis() {
     const s = state.alloc.stats;
+    if (!manualZone()) {
+      const n = (state.data.bins || []).length;
+      el.zoneNote.textContent = n
+        ? "Locations are read from JSTERP Zone Inventory (6K4), bin by bin, every 30 seconds; they cannot be changed here."
+        : "No 6K4 bins from JSTERP yet: the laptops need extension " + Accounts.EXT_VERSION + " (Accounts page).";
+      el.zoneNote.classList.toggle("bad-text", !n);
+    }
     const cats = new Set(state.data.skus.map((k) => k.category || ""));
     el.source.textContent = s.skus.toLocaleString() + " SKUs in " + cats.size + " categor" + (cats.size === 1 ? "y" : "ies");
     el.kShelves.textContent = s.shelvesUsed + " / " + s.shelves;
@@ -471,22 +514,24 @@ const Dashboard = (function () {
   // a copy button, and the x that takes the SKU off it.
   function locationsHtml(r) {
     const perBox = r.sku.qtyPerBox > 0 ? r.sku.qtyPerBox : 0;
+    const manual = manualZone();
     const where = r.spots.map(function (p) {
       const shared = (state.alloc.locations.get(p.label) || { sections: [] }).sections.length > 1;
       return '<span class="loc-chip"><a href="#" data-loc="' + p.label + '">' + p.label + "</a>" +
         '<span class="loc-qty">' + fmt(p.boxes) + " box" + (p.boxes === 1 ? "" : "es") +
-        (perBox ? " \u00b7 " + fmt(p.qty) + " qty" +
+        (perBox ? " \u00b7 " + fmt(p.qty) + " qty" + (!manual ? "" :
           '<button type="button" class="copy-btn edit-btn" data-edit-qty="' + p.label + '" data-edit-sku="' + r.index +
-          '" title="Change the qty on ' + p.label + '" aria-label="Change the qty on ' + p.label + '">' + EDIT_ICON + "</button>" : "") +
+          '" title="Change the qty on ' + p.label + '" aria-label="Change the qty on ' + p.label + '">' + EDIT_ICON + "</button>") : "") +
         "</span>" +
         // A shelf that filled up before this SKU got any room on it, for
         // instance when the SKU before it was given its qty per box later.
         (!p.boxes && r.counted && r.stock > 0 && r.fits
-          ? '<span class="loc-noroom" title="The shelf is full: none of this SKU\u2019s boxes fit. Delete this location.">no room</span>'
+          ? '<span class="loc-noroom" title="The shelf is full: none of this SKU\u2019s boxes fit.' + (manual ? " Delete this location." : "") + '">no room</span>'
           : shared ? '<span class="loc-mixed" title="Shared with other SKUs">mixed</span>' : "") +
         '<span class="loc-acts"><button type="button" class="copy-btn" data-copy="' + p.label + '" title="Copy location" aria-label="Copy ' + p.label + '">' + COPY_ICON + "</button>" +
-        '<button type="button" class="loc-free" data-free="' + p.label + '" data-free-sku="' + r.index + '" title="Delete this location" aria-label="Delete ' + p.label + '">\u00d7</button></span></span>';
-    }).join("");
+        (manual ? '<button type="button" class="loc-free" data-free="' + p.label + '" data-free-sku="' + r.index + '" title="Delete this location" aria-label="Delete ' + p.label + '">\u00d7</button>' : "") +
+        "</span></span>";
+    }).join("") + (manual ? "" : offMapHtml(r));
     const total = r.spots.length > 1 && perBox
       ? '<span class="loc-total">Total ' + fmt(r.placed) + " boxes \u00b7 " + fmt(r.placedQty) + " qty</span>" : "";
     // What keeps the SKU off the shelves, if anything; otherwise the button
@@ -495,9 +540,19 @@ const Dashboard = (function () {
     const why = whyNoLocation(r);
     const blocked = BLOCKERS.indexOf(r.problem) >= 0;
     const foot = !why
-      ? '<button type="button" class="ghost small loc-pick" data-pick="' + r.index + '">+ Select location</button>'
+      ? (manual ? '<button type="button" class="ghost small loc-pick" data-pick="' + r.index + '">+ Select location</button>'
+        : r.spots.length ? "" : '<span class="tag" title="JSTERP has no 6K4 bin on this map for it">no 6K4 bin</span>')
       : blocked ? '<span class="tag' + (needsAttention(r) ? " bad" : "") + '" title="' + esc(why) + '">' + WHY[r.problem] + "</span>" : "";
     return where + total + (foot ? '<span class="loc-foot">' + foot + "</span>" : "");
+  }
+
+  // JSTERP bins of a SKU that are not a shelf on the 6K4 map: shown as they
+  // are, so a bin named some other way is seen rather than lost.
+  function offMapHtml(r) {
+    const off = state.offMap ? state.offMap.get(String(r.sku.id)) : null;
+    if (!off || !off.length) return "";
+    return off.map((b) => '<span class="loc-chip off-map" title="In JSTERP, but not a shelf on the 6K4 map"><b>' +
+      esc(b.bin) + '</b><span class="loc-qty">' + fmt(b.qty) + " qty</span></span>").join("");
   }
 
   // Another location is only for boxes still waiting under No shelf, and
@@ -743,7 +798,7 @@ const Dashboard = (function () {
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape" || el.skuDialog.open || el.askDialog.open) return;
     if (!el.detail.hidden) closeDetail();
-    else if (!el.varModal.hidden) closeVariance();
+    else if (!el.varModal.hidden) Pages.show("racks");
     else if (!el.pickModal.hidden) closePicker();
     else if (!el.catModal.hidden) closeCategory();
   });
@@ -848,6 +903,7 @@ const Dashboard = (function () {
   // Picking a shelf on the rack map. Vacant shelves are given at once; an
   // occupied one asks first.
   function openPicker(index) {
+    if (!manualZone()) return;
     if (whyNoLocation(state.alloc.results[index])) return;
     state.picking = index;
     renderPicker();
@@ -906,6 +962,7 @@ const Dashboard = (function () {
   });
 
   async function giveShelf(index, label) {
+    if (!manualZone()) return;
     const r = state.alloc.results[index];
     const why = whyNoLocation(r);
     if (why) { pickNote(why); return; }
@@ -965,6 +1022,7 @@ const Dashboard = (function () {
   // plus what is still without a shelf, and no more than the room it has
   // there plus the room still free on the shelf.
   async function editShelfQty(label, index) {
+    if (!manualZone()) return;
     const r = state.alloc.results[index];
     if (!r) return;
     const spot = r.spots.find((p) => p.label === label);
@@ -1004,6 +1062,7 @@ const Dashboard = (function () {
   }
 
   async function freeShelf(label, index) {
+    if (!manualZone()) return;
     const r = state.alloc.results[index];
     if (!r) return;
     const rec = state.alloc.locations.get(label);
@@ -1433,9 +1492,18 @@ const Dashboard = (function () {
     select(r.spots[0].label, false);
   }
 
-  el.varBtn.addEventListener("click", function () { if (state.data) openVariance(); });
-  el.varClose.addEventListener("click", closeVariance);
-  el.varModal.addEventListener("click", function (e) { if (e.target === el.varModal) closeVariance(); });
+  // The report is the Variance report tab: closing it goes back to 4KB.
+  el.varClose.addEventListener("click", function () { Pages.show("racks"); });
+
+  // Opened from the tab before the SKUs are in: it opens once they are.
+  let varWanted = false;
+  function variancePage(on) {
+    varWanted = on;
+    if (!on) { if (!el.varModal.hidden) closeVariance(); return; }
+    // Below the top bar, so the tabs stay in reach.
+    el.varModal.style.top = document.querySelector(".topbar").offsetHeight + "px";
+    if (state.data && el.varModal.hidden) openVariance();
+  }
   el.varCat.addEventListener("change", renderVariance);
   el.varSearch.addEventListener("input", renderVariance);
   el.varTabs.forEach((b) => b.addEventListener("click", function () { varTab = b.dataset.var; renderVariance(); }));
@@ -1643,7 +1711,7 @@ const Dashboard = (function () {
     el.liveSync.className = "sub live-sync " + kind;
     clearInterval(pollTimer);
     if (kind === "off" && DB.configured()) {
-      pollTimer = setInterval(function () { wantLive("skus"); wantLive("shelves"); }, LIVE_POLL);
+      pollTimer = setInterval(function () { wantLive("skus"); wantLive("shelves"); wantLive("bins"); }, LIVE_POLL);
     }
   }
 
@@ -1664,6 +1732,8 @@ const Dashboard = (function () {
       if (!row.import_id || row.import_id === id) wantLive("shelves");
     } else if (table === DB.tables.skus) {
       if (!row.import_id || row.import_id === id) wantLive("skus");
+    } else if (table === DB.tables.bins) {
+      wantLive("bins");
     } else if (table === DB.tables.sync) {
       if (row.name === STOCK_FEED && p.new && p.new.name) {
         takeStockNote(p.new);
@@ -1699,6 +1769,7 @@ const Dashboard = (function () {
       if (want.has("all") || !state.data.import) {
         const data = await DB.imports.latest();
         if (data && data.import) data.shelves = await DB.shelves.list(data.import.id);
+        if (data) data.bins = await DB.bins.list("6k4");
         load(data);
         return;
       }
@@ -1722,6 +1793,7 @@ const Dashboard = (function () {
         }
       }
       if (want.has("shelves")) state.data.shelves = await DB.shelves.list(state.data.import.id);
+      if (want.has("bins")) state.data.bins = await DB.bins.list("6k4");
       if (redraw) {
         buildColors();
         recompute();
@@ -1751,8 +1823,8 @@ const Dashboard = (function () {
     Layout.use(key);
     el.title.dataset.zone = key;
     el.title.textContent = Layout.NAME + " racks";
-    el.varBtn.hidden = key !== "4kb";
-    if (!el.varModal.hidden) closeVariance();
+    if (!el.varModal.hidden && key !== "4kb") closeVariance();
+    el.zoneNote.hidden = key !== "6k4";
     if (!el.detail.hidden) closeDetail();
     if (!el.pickModal.hidden) closePicker();
     if (state.category !== null) closeCategory();
@@ -1767,6 +1839,7 @@ const Dashboard = (function () {
     try {
       const data = await DB.imports.latest();
       if (data && data.import) data.shelves = await DB.shelves.list(data.import.id);
+      if (data) data.bins = await DB.bins.list("6k4");
       load(data);
       startSoldSync();
       startStockSync();
@@ -1787,5 +1860,6 @@ const Dashboard = (function () {
     current: () => state.data,
     shown: function () { if (state.view) state.view.redraw(); },
     setZone: setZone,
+    variancePage: variancePage,
   };
 })();

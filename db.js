@@ -381,6 +381,24 @@ const DB = (function () {
   // One row per feed (name "jsterp-4kb": the 4KB Qty from JSTERP), written
   // by the feed each time it runs: when, whether it worked, and its counts.
   const SYNC_TABLE = "rack_sync";
+
+  // Where JSTERP says each SKU sits, bin by bin, for the zones plotted from
+  // it (6K4): [{ bin, sku, qty }], sku lower-case. Written by the 4KB sync.
+  const BIN_TABLE = "rack_bins";
+  const bins = {
+    async list(zone) {
+      if (!configured()) return [];
+      const out = [];
+      for (let from = 0; ; from += PAGE) {
+        const part = await rest(BIN_TABLE, {
+          query: "?select=bin,sku,qty&zone=eq." + encodeURIComponent(zone) + "&order=bin,sku&limit=" + PAGE + "&offset=" + from,
+        });
+        out.push.apply(out, part);
+        if (part.length < PAGE) break;
+      }
+      return out;
+    },
+  };
   const syncs = {
     async get(name) {
       if (!configured()) return null;
@@ -483,7 +501,7 @@ const DB = (function () {
       return null;
     }
     const channel = c.channel("rack-planner");
-    [IMPORT_TABLE, SKU_TABLE, SHELF_TABLE, SYNC_TABLE].forEach(function (table) {
+    [IMPORT_TABLE, SKU_TABLE, SHELF_TABLE, SYNC_TABLE, BIN_TABLE].forEach(function (table) {
       channel.on("postgres_changes", { event: "*", schema: "public", table: table }, function (payload) {
         onChange(table, payload);
       });
@@ -511,7 +529,8 @@ const DB = (function () {
     shelves: shelves,
     live: live,
     syncs: syncs,
-    tables: { imports: IMPORT_TABLE, skus: SKU_TABLE, shelves: SHELF_TABLE, sync: SYNC_TABLE },
+    tables: { imports: IMPORT_TABLE, skus: SKU_TABLE, shelves: SHELF_TABLE, sync: SYNC_TABLE, bins: BIN_TABLE },
+    bins: bins,
     racks: makeStore(RACK_TABLE, "rackPlanner.racks", SEED_RACKS, function (a, b) {
       if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
       return byName(a, b);

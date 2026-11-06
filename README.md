@@ -25,8 +25,16 @@ count there.
 
 Both racks pages are one page that switches zone (`#racks` is 4KB,
 `#racks-6k4` is 6K4): the same SKUs, rules and box sizes, each zone's own
-shelves and stock. Locations share `rack_shelves`; each zone shows only the
-labels that are its own. The Variance report is on 4KB only.
+shelves and stock.
+
+- **4KB** locations are picked by hand (*+ Select location*) and kept in
+  `rack_shelves`.
+- **6K4** locations are not entered at all: they are JSTERP's own bins. The
+  syncing laptop sends every 6K4 bin with its SKUs and qty (extension 1.3.0,
+  `jst_zones` with `"bins": true`), `jst_sync()` keeps them in `rack_bins`, and
+  the page reads each bin as a shelf label -- `6K4-3-2-1`, `6K4-03-02-01` and
+  `6K4030201` are all Row 3, Column 2, Layer 1. A bin that reads as no shelf on
+  the map is still listed under the SKU, dashed, so nothing is lost.
 
 ### The SKU list
 
@@ -311,7 +319,7 @@ in jst_sync().
 
 ## Variance report
 
-**Variance report** on the Racks page lists every SKU whose 4KB Qty is off
+The **Variance report** tab (`#variance`) lists every SKU whose 4KB Qty is off
 from Needed (sold per day x days of stock), in two tabs, biggest gap first:
 
 - **Short in 4KB**: the gap in qty and boxes, the 6K4 Qty and boxes, and the
