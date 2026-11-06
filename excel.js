@@ -194,7 +194,9 @@ const Excel = (function () {
 
   // Everything the floor needs: shelf by shelf in walking order, and SKU by
   // SKU with every shelf it went to.
-  function putAway(skus, allocation, importInfo) {
+  // zone: "4KB" or "6K4", whose racks these are.
+  function putAway(skus, allocation, importInfo, zone) {
+    const Z = zone || "4KB";
     const shelves = [...allocation.locations.values()]
       .sort((a, b) => a.row - b.row || a.col - b.col || a.layer - b.layer);
 
@@ -219,13 +221,13 @@ const Excel = (function () {
     // The SKU's numbers as they stand after any edits on the dashboard, so the
     // sheet can go straight back into the master list.
     const days = allocation.rules.days;
-    const bySku = [["Tier", "Category", "SKU", "Sold per day", "Quantity", "Length", "Width", "Height", "Qty per box",
+    const bySku = [["Tier", "Category", "SKU", "Sold per day", Z + " Qty", "Length", "Width", "Height", "Qty per box",
       "Needed qty (" + days + " days)", "Boxes needed", "Boxes placed", "Not placed", "Boxes per full shelf", "Locations", "Note"]];
     // In list order.
     const ordered = allocation.results.slice().sort((a, b) => a.order - b.order);
     for (const r of ordered) {
       const s = r.sku;
-      bySku.push([s.tier, s.category, s.sku, s.soldPerDay, s.quantity, s.length, s.width, s.height, s.qtyPerBox,
+      bySku.push([s.tier, s.category, s.sku, s.soldPerDay, Z === "6K4" ? s.qty6k4 : s.quantity, s.length, s.width, s.height, s.qtyPerBox,
         r.needed, r.problem === "no-count" ? "" : r.wanted, r.placed, r.unplaced, r.perShelf || "",
         r.spots.map((p) => p.label + " (" + p.boxes + ")").join(", "), r.problem ? WHY[r.problem] : ""]);
     }
@@ -234,7 +236,7 @@ const Excel = (function () {
     XLSX.utils.book_append_sheet(book, sheet(byShelf), "Put-away");
     XLSX.utils.book_append_sheet(book, sheet(bySku), "By SKU");
     const day = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(book, "rack-putaway-" + day + ".xlsx");
+    XLSX.writeFile(book, Z.toLowerCase() + "-putaway-" + day + ".xlsx");
   }
 
   // The variance report: SKUs short in 4KB and what 6K4 can send, those

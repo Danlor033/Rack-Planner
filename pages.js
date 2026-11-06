@@ -1,19 +1,25 @@
-// Which page is showing. The address keeps it (#racks, #calc, #accounts), so
-// a bookmark or a refresh lands where you were. Nothing loads until Auth says
-// the page may open.
+// Which page is showing. The address keeps it (#racks for the 4KB racks,
+// #racks-6k4, #calc, #accounts), so a bookmark or a refresh lands where you
+// were. Both racks share one page, which switches zone. Nothing loads until
+// Auth says the page may open.
 const Pages = (function () {
   "use strict";
 
-  const NAMES = ["racks", "calc", "accounts"];
+  // Each name, and the page it shows.
+  const PAGES = { "racks": "racks", "racks-6k4": "racks", "calc": "calc", "accounts": "accounts" };
+  const ZONE = { "racks": "4kb", "racks-6k4": "6k4" };
 
   function show(name) {
-    if (NAMES.indexOf(name) < 0 || (name === "accounts" && !Auth.canManage())) name = "racks";
-    NAMES.forEach(function (n) {
-      document.getElementById("page-" + n).hidden = n !== name;
+    if (!PAGES[name] || (name === "accounts" && !Auth.canManage())) name = "racks";
+    ["racks", "calc", "accounts"].forEach(function (n) {
+      document.getElementById("page-" + n).hidden = n !== PAGES[name];
     });
     document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("on", b.dataset.page === name));
     if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
-    if (name === "racks") Dashboard.shown();
+    if (ZONE[name]) {
+      Dashboard.setZone(ZONE[name]);
+      Dashboard.shown();
+    }
     Accounts.shown(name === "accounts");
   }
 

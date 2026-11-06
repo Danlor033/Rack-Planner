@@ -2,24 +2,31 @@
 
 Two things in one page:
 
-- **Racks** — the SKU list, and every SKU's shelf in the 4KB racks: which
-  shelf, how many boxes, and how they sit on it.
+- **4KB Racks** and **6K4 Racks** — the SKU list, and every SKU's shelf in
+  that zone's racks: which shelf, how many boxes, and how they sit on it.
 - **Calculator** — type one box size, get how many fit in a rack and how.
 
-Every shelf is 240 × 120 cm (L × W). Layers 1 and 2 are 85 cm tall, and
-Layer 3, the top, is 140 cm.
+Every shelf, in both zones, is 240 × 120 cm (L × W). Layers 1 and 2 are
+85 cm tall, and Layer 3, the top, is 140 cm.
 
-## The 4KB racks
+## The racks
 
-| Row | Columns | Layers | Shelves |
-| --- | --- | --- | --- |
-| 1 | 14 | 3 | 42 |
-| 2 – 8 | 9 each | 3 | 189 |
-| | | | **231** |
+| Zone | Rows | Columns | Layers | Shelves | Boxes counted from |
+| --- | --- | --- | --- | --- | --- |
+| 4KB | 1 | 14 | 3 | 42 | 4KB Qty |
+| | 2 – 8 | 9 each | 3 | 189 | |
+| | | | | **231** | |
+| 6K4 | 1 – 17 | 6 each | 3 | **306** | 6K4 Qty |
 
-Each shelf is labelled `4KB-row-column-layer`: `4KB-1-1-1` is Row 1,
-Column 1, Layer 1, and Layer 1 is the floor. The layout lives in
-[`layout.js`](layout.js) -- add a row or change a column count there.
+Each shelf is labelled `zone-row-column-layer`: `4KB-1-1-1` is Row 1,
+Column 1, Layer 1 of 4KB, and Layer 1 is the floor; `6K4-3-2-1` is in 6K4.
+The layouts live in [`layout.js`](layout.js) -- add a row or change a column
+count there.
+
+Both racks pages are one page that switches zone (`#racks` is 4KB,
+`#racks-6k4` is 6K4): the same SKUs, rules and box sizes, each zone's own
+shelves and stock. Locations share `rack_shelves`; each zone shows only the
+labels that are its own. The Variance report is on 4KB only.
 
 ### The SKU list
 

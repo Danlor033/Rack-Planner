@@ -1,5 +1,5 @@
-// The racks dashboard: every shelf in the 4KB racks, what the imported sheet
-// puts on it, and the rules that decided.
+// The racks dashboard: every shelf in the 4KB racks, or the 6K4 racks (see
+// setZone), what the imported sheet puts on it, and the rules that decided.
 //
 // Placement is never stored. It is worked out here from the sheet and the
 // rules every time, so a rule change shows at once and every PC that opens
@@ -12,7 +12,7 @@ const Dashboard = (function () {
   const TIER_COLORS = ["#17a673", "#2f6fed", "#f0982c", "#e05260", "#8b5cf6", "#0ea5b7", "#64748b"];
 
   const el = {
-    empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"),
+    empty: $("dashEmpty"), dash: $("dash"), source: $("dashSource"), title: $("dashTitle"),
     search: $("dashSearch"), exportBtn: $("dashExport"),
     varBtn: $("varBtn"), varModal: $("varModal"), varClose: $("varClose"), varCat: $("varCat"), varExport: $("varExport"),
     varStats: $("varStats"), varNote: $("varNote"), varTable: $("varTable"), varBody: $("varBody"),
@@ -176,14 +176,14 @@ const Dashboard = (function () {
     el.kSkus.textContent = s.skusPlaced + " / " + s.skusNeeding;
     el.kFill.textContent = pct(s.fill);
 
-    // SKUs with stock in 4KB Qty but no box count: the racks cannot
+    // SKUs with stock but no box count: the racks cannot
     // hold what nobody has said the size of. Easy to miss in a table, so it
     // is said up front.
     if (s.skusNoCount) {
       const units = state.alloc.results.filter((r) => r.problem === "no-count")
-        .reduce((n, r) => n + (Number(r.sku.quantity) || 0), 0);
+        .reduce((n, r) => n + (Number(Layout.stock(r.sku)) || 0), 0);
       el.gapText.innerHTML = "<b>" + s.skusNoCount + " SKUs</b> have stock (" + units.toLocaleString() +
-        " units in 4KB Qty) but no <em>Qty per box</em>, so their boxes " +
+        " units in " + Layout.NAME + " Qty) but no <em>Qty per box</em>, so their boxes " +
         "cannot be counted and the racks have no room set aside for them. Click <em>Show them</em> to fill it in.";
       el.gap.hidden = false;
     } else {
@@ -383,7 +383,7 @@ const Dashboard = (function () {
     "no-size": "no L / W / H",
     "no-location": "pick a location",
     "short": "needs more shelves",
-    "no-stock": "no 4KB Qty",
+    "no-stock": "no stock",
     "no-count": "no qty per box",
   };
   const ATTENTION = ["too-big", "no-size", "no-location", "short", "no-count"];
@@ -394,21 +394,25 @@ const Dashboard = (function () {
   // the heading of their group. "edit" makes a number editable in place; the
   // rest are worked out (see worked()) and kept up to date where they stand.
   // w is the width in px; SKU and Locations share what is left.
-  const COLUMNS = [
-    { group: "4KB stock vs sales", head: "4KB Qty", w: 66, worked: "quantity", title: "From JSTERP Zone Inventory, every 30 seconds" },
-    { group: "4KB stock vs sales", head: "Sold/Day", w: 60, worked: "sold", title: "Live from the Google Sheet, column D" },
-    { group: "4KB stock vs sales", head: "Needed", w: 66, worked: "needed", title: "Sold per day \u00d7 days of stock" },
+  // Named for the zone in use: "4KB Qty" or "6K4 Qty".
+  function columns() {
+    const Z = Layout.NAME;
+    return [
+    { group: Z + " stock vs sales", head: Z + " Qty", w: 66, worked: "quantity", title: "From JSTERP Zone Inventory, every 30 seconds" },
+    { group: Z + " stock vs sales", head: "Sold/Day", w: 60, worked: "sold", title: "Live from the Google Sheet, column D" },
+    { group: Z + " stock vs sales", head: "Needed", w: 66, worked: "needed", title: "Sold per day \u00d7 days of stock" },
     { group: "Boxes", head: "Qty/Box", w: 62, edit: "qtyPerBox" },
-    { group: "Boxes", head: "Boxes", w: 54, worked: "boxes", title: "4KB Qty \u00f7 Qty/Box, rounded up" },
+    { group: "Boxes", head: "Boxes", w: 54, worked: "boxes", title: Z + " Qty \u00f7 Qty/Box, rounded up" },
     { group: "Boxes", head: "Per Shelf", w: 54, worked: "perShelf", title: "Boxes that fit on one empty Layer 1 or 2 shelf (85 cm); L3: on the taller Layer 3 (140 cm)" },
     { group: "Boxes", head: "Shelf Needed", w: 58, worked: "shelvesNeeded", title: "Boxes \u00f7 Per Shelf, rounded up (Layer 1 and 2 shelves)" },
     { group: "On shelves", head: "Placed", w: 56, worked: "placed", title: "Boxes already on a shelf" },
-    { group: "On shelves", head: "No shelf", w: 58, worked: "unplaced", title: "Boxes of the 4KB Qty not on a shelf yet" },
+    { group: "On shelves", head: "No shelf", w: 58, worked: "unplaced", title: "Boxes of the " + Z + " Qty not on a shelf yet" },
     { group: "Box size (cm)", head: "L", w: 48, edit: "length" },
     { group: "Box size (cm)", head: "W", w: 48, edit: "width" },
     { group: "Box size (cm)", head: "H", w: 48, edit: "height" },
     { head: "Locations", w: 0, worked: "locations", cls: "locs" },
-  ];
+    ];
+  }
 
   // A box that is empty but needed for this SKU to get a shelf.
   function wanting(r, key) {
@@ -501,10 +505,10 @@ const Dashboard = (function () {
   // otherwise why not.
   function whyNoLocation(r) {
     if (!r.counted) return "Fill in Qty/Box first — the boxes cannot be counted without it.";
-    if (r.stock <= 0) return "There is no stock in 4KB Qty.";
+    if (r.stock <= 0) return "There is no stock in " + Layout.NAME + " Qty.";
     if (!Allocate.hasSize(r.sku)) return "Fill in L, W and H first.";
     if (!r.fits) return "The box is bigger than a shelf.";
-    if (r.unplaced <= 0) return "Every box of the 4KB Qty already has a shelf — nothing left under No shelf.";
+    if (r.unplaced <= 0) return "Every box of the " + Layout.NAME + " Qty already has a shelf — nothing left under No shelf.";
     return null;
   }
 
@@ -519,7 +523,7 @@ const Dashboard = (function () {
   // The value of one worked-out column for a SKU.
   function worked(key, r) {
     switch (key) {
-      case "quantity": return fmt(r.sku.quantity);
+      case "quantity": return fmt(Layout.stock(r.sku));
       case "sold": return fmt(r.sku.soldPerDay);
       case "needed": return fmt(r.needed);
       case "boxes": return "<b>" + (r.problem === "no-count" ? "?" : fmt(r.stock)) + "</b>";
@@ -653,6 +657,7 @@ const Dashboard = (function () {
     const withCat = picked === ALL;
     // Narrow enough to fit the window without sideways scrolling: headings
     // and long names wrap, and SKU and Locations share what is left.
+    const COLUMNS = columns();
     const widths = [36, 96].concat(withCat ? [96] : [], [0], COLUMNS.map((c) => c.w));
     const lead = ["#", "Tier"].concat(withCat ? ["Category"] : [], ["SKU"]);
     // Two heading rows: the groups, then the columns. A column starting a
@@ -1252,7 +1257,7 @@ const Dashboard = (function () {
 
   el.exportBtn.addEventListener("click", function () {
     if (!Excel.available()) { alert("The spreadsheet library did not load, so the list cannot be written."); return; }
-    Excel.putAway(state.data.skus, state.alloc, state.data.import);
+    Excel.putAway(state.data.skus, state.alloc, state.data.import, Layout.NAME);
   });
 
   // --- variance: 4KB stock against what sales need, and what 6K4 can do -------
@@ -1735,6 +1740,27 @@ const Dashboard = (function () {
     DB.live(onLive, liveStatus);
   }
 
+  // --- which racks ---------------------------------------------------------------
+
+  // 4KB or 6K4: the same SKUs and page, another floor of racks, its own
+  // shelves (the locations' labels say which), and its own stock. Whatever
+  // was open belongs to the other zone, so it closes. The Variance report
+  // compares 4KB with what 6K4 can send, so it lives on 4KB.
+  function setZone(key) {
+    if (Layout.KEY === key && el.title.dataset.zone === key) return;
+    Layout.use(key);
+    el.title.dataset.zone = key;
+    el.title.textContent = Layout.NAME + " racks";
+    el.varBtn.hidden = key !== "4kb";
+    if (!el.varModal.hidden) closeVariance();
+    if (!el.detail.hidden) closeDetail();
+    if (!el.pickModal.hidden) closePicker();
+    if (state.category !== null) closeCategory();
+    el.search.value = "";
+    state.search = "";
+    if (state.data) recompute();
+  }
+
   // --- start -----------------------------------------------------------------
 
   async function start() {
@@ -1760,5 +1786,6 @@ const Dashboard = (function () {
     hasData: () => !!state.data,
     current: () => state.data,
     shown: function () { if (state.view) state.view.redraw(); },
+    setZone: setZone,
   };
 })();

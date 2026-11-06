@@ -72,11 +72,11 @@ const Allocate = (function () {
     return Math.max(0, Math.ceil(needed / perBox - EPS));
   }
 
-  // The boxes 4KB actually has for a SKU: its 4KB Qty in boxes, rounded up.
-  // These are what go on shelves, so No shelf counts down from here. Null
-  // when there is stock but no Qty per box.
+  // The boxes the zone in use actually has for a SKU: its 4KB Qty, or 6K4
+  // Qty, in boxes, rounded up. These are what go on shelves, so No shelf
+  // counts down from here. Null when there is stock but no Qty per box.
   function stockBoxes(s) {
-    const qty = num(s.quantity);
+    const qty = num(Layout.stock(s));
     const perBox = num(s.qtyPerBox);
     if (perBox <= 0) return qty > 0 ? null : 0;
     return Math.max(0, Math.ceil(qty / perBox - EPS));
@@ -123,7 +123,7 @@ const Allocate = (function () {
         index: i, order: i, sku: s, needed: neededQty(s, days),
         wanted: wanted === null ? 0 : wanted, stock: stock === null ? 0 : stock,
         counted: stock !== null && wanted !== null, placed: 0, unplaced: 0,
-        placedQty: 0, qtyLeft: Math.max(0, num(s.quantity)),
+        placedQty: 0, qtyLeft: Math.max(0, num(Layout.stock(s))),
         perShelf: 0, perTop: 0, perLayer: {}, fits: false, spots: [], problem: null,
       };
     });

@@ -6,7 +6,7 @@
 <title>Rack Planner</title>
 <!-- Tab icon: the top bar's mark, kept in the page so every copy has it. -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3CclipPath id='r'%3E%3Crect width='32' height='32' rx='8'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23r%29'%3E%3Cpath d='M0 0H32L0 32Z' fill='%232f6fed'/%3E%3Cpath d='M32 32H0L32 0Z' fill='%2317a673'/%3E%3Cpath d='M-2 34L34 -2' stroke='%23fff' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E" />
-<link rel="stylesheet" href="style.css?v=2026-11-06a" />
+<link rel="stylesheet" href="style.css?v=2026-11-06b" />
 </head>
 <body>
 
@@ -19,7 +19,8 @@
     </div>
   </div>
   <nav class="nav" aria-label="Pages">
-    <button class="nav-btn" data-page="racks" type="button">Racks</button>
+    <button class="nav-btn" data-page="racks" type="button">4KB Racks</button>
+    <button class="nav-btn" data-page="racks-6k4" type="button">6K4 Racks</button>
     <button class="nav-btn" data-page="calc" type="button">Calculator</button>
     <button class="nav-btn" data-page="accounts" id="acctNav" type="button" hidden>Accounts</button>
   </nav>
@@ -40,7 +41,7 @@
   <div id="dash" hidden>
     <div class="dash-head">
       <div>
-        <h2>4KB racks</h2>
+        <h2 id="dashTitle">4KB racks</h2>
         <p class="sub" id="dashSource">&nbsp;</p>
         <p class="sub sold-sync" id="soldSync"></p>
         <p class="sub sold-sync" id="stockSync"></p>
@@ -502,20 +503,20 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=2026-11-06a"></script>
-<script src="packer.js?v=2026-11-06a"></script>
-<script src="layout.js?v=2026-11-06a"></script>
-<script src="allocate.js?v=2026-11-06a"></script>
+<script src="config.js?v=2026-11-06b"></script>
+<script src="packer.js?v=2026-11-06b"></script>
+<script src="layout.js?v=2026-11-06b"></script>
+<script src="allocate.js?v=2026-11-06b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="db.js?v=2026-11-06a"></script>
-<script src="excel.js?v=2026-11-06a"></script>
-<script src="view3d.js?v=2026-11-06a"></script>
-<script src="view2d.js?v=2026-11-06a"></script>
-<script src="app.js?v=2026-11-06a"></script>
-<script src="soldsheet.js?v=2026-11-06a"></script>
-<script src="dashboard.js?v=2026-11-06a"></script>
-<script src="auth.js?v=2026-11-06a"></script>
-<script src="accounts.js?v=2026-11-06a"></script>
-<script src="pages.js?v=2026-11-06a"></script>
+<script src="db.js?v=2026-11-06b"></script>
+<script src="excel.js?v=2026-11-06b"></script>
+<script src="view3d.js?v=2026-11-06b"></script>
+<script src="view2d.js?v=2026-11-06b"></script>
+<script src="app.js?v=2026-11-06b"></script>
+<script src="soldsheet.js?v=2026-11-06b"></script>
+<script src="dashboard.js?v=2026-11-06b"></script>
+<script src="auth.js?v=2026-11-06b"></script>
+<script src="accounts.js?v=2026-11-06b"></script>
+<script src="pages.js?v=2026-11-06b"></script>
 </body>
 </html>
