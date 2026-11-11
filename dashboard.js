@@ -23,7 +23,7 @@ const Dashboard = (function () {
     map: $("rackMap"), mapReset: $("mapReset"),
     detail: $("detail"), detailClose: $("detailClose"),
     dLabel: $("dLabel"), dWhere: $("dWhere"), dCanvas: $("dCanvas"), dTable: $("dTable"),
-    skuFilter: $("skuFilter"), skuTable: $("skuTable"),
+    skuFilter: $("skuFilter"), qtyFilter: $("qtyFilter"), skuTable: $("skuTable"),
     gap: $("dataGap"), gapText: $("dataGapText"), gapShow: $("dataGapShow"),
     ruleDays: $("ruleDays"), skuStatus: $("skuStatus"),
     catList: $("catList"), catHint: $("catHint"), skuAdd: $("skuAdd"), daysField: $("daysField"),
@@ -147,7 +147,29 @@ const Dashboard = (function () {
 
   // 4KB's shelves are the ones picked here; 6K4's are JSTERP's own bins.
   function layout() {
-    return Allocate.place(state.data.skus, manualZone() ? state.data.shelves : binShelves(), state.rules);
+    const alloc = Allocate.place(state.data.skus, manualZone() ? state.data.shelves : binShelves(), state.rules);
+    if (manualZone()) deleteEmpty(alloc.empty);
+    return alloc;
+  }
+
+  // Locations left with nothing on them -- the SKU has no stock left for
+  // them, or there is no room -- are deleted, by whoever's page sees it
+  // first and may change things. Each one once, however often it redraws.
+  const deleting = new Set();
+  function deleteEmpty(empty) {
+    if (!empty || !empty.length || !Auth.canEdit() || !state.data.import) return;
+    const importId = state.data.import.id;
+    for (const e of empty) {
+      const key = e.label + "|" + e.sku;
+      if (deleting.has(key)) continue;
+      deleting.add(key);
+      DB.shelves.free(importId, e.label, e.sku)
+        .then(function () {
+          state.data.shelves = state.data.shelves.filter((a) => !(a.label === e.label && String(a.sku) === String(e.sku)));
+        })
+        .catch(function (err) { console.error(err); })
+        .finally(function () { deleting.delete(key); });
+    }
   }
 
   // Locations are picked by hand only in 4KB. 6K4's come from JSTERP.
@@ -692,6 +714,8 @@ const Dashboard = (function () {
     renderCatStats();
 
     const filter = el.skuFilter.value;
+    // SKUs with no stock in this zone, out of the way unless asked for.
+    const hideZero = el.qtyFilter.value === "hide";
     // Best seller first. The order is set when the list is drawn, and an
     // edit does not redraw it, so a row never jumps away while somebody is
     // typing in it. The # column gives its priority on the racks.
@@ -700,6 +724,7 @@ const Dashboard = (function () {
       .filter((r) => picked === ALL || (r.sku.category || "") === picked)
       .sort((a, b) => sold(b) - sold(a) || Allocate.compareText(a.sku.sku, b.sku.sku))
       .filter(function (r) {
+        if (hideZero && !(Number(Layout.stock(r.sku)) > 0)) return false;
         if (filter === "missing") return ATTENTION.indexOf(r.problem) >= 0;
         if (filter === "nocount") return r.problem === "no-count";
         if (filter === "placed") return r.placed > 0 && r.unplaced === 0;
@@ -756,7 +781,10 @@ const Dashboard = (function () {
         COPY_ICON + "</button></span></td>" +
         cells + "</tr>";
     });
-    if (!rows.length) html += '<tr><td colspan="' + widths.length + '" class="sub">Nothing to show.</td></tr>';
+    if (!rows.length) {
+      html += '<tr><td colspan="' + widths.length + '" class="sub">Nothing to show' +
+        (hideZero ? " \u2014 SKUs with 0 " + Layout.NAME + " Qty are hidden." : ".") + "</td></tr>";
+    }
     el.skuTable.innerHTML = html + "</tbody>";
   }
 
@@ -1194,6 +1222,13 @@ const Dashboard = (function () {
     el.map.scrollLeft = 0;
   });
   el.skuFilter.addEventListener("change", renderSkus);
+  el.qtyFilter.addEventListener("change", renderSkus);
+
+  // The 0-qty filter says which zone's qty it means.
+  function nameQtyFilter() {
+    el.qtyFilter.options[0].textContent = "Hide 0 " + Layout.NAME + " Qty";
+    el.qtyFilter.options[1].textContent = "Show 0 " + Layout.NAME + " Qty";
+  }
 
   // The days of stock re-lay the racks at once and are saved for everyone.
   // The other rules are no longer on the page; the ones saved with the
@@ -1306,6 +1341,7 @@ const Dashboard = (function () {
       el.skuDialog.close();
       state.category = added.category || "";
       el.skuFilter.value = "all";
+      el.qtyFilter.value = "show";
       relayout();
       const tr = el.skuTable.querySelector('tr[data-sku="' + (state.data.skus.length - 1) + '"]');
       if (tr) {
@@ -1829,6 +1865,7 @@ const Dashboard = (function () {
     Layout.use(key);
     el.title.dataset.zone = key;
     el.title.textContent = Layout.NAME + " racks";
+    nameQtyFilter();
     if (!el.varModal.hidden && key !== "4kb") closeVariance();
     el.zoneNote.hidden = key !== "6k4";
     // Days of stock decide Needed, which is 4KB's.

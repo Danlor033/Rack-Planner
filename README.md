@@ -29,6 +29,9 @@ shelves and stock.
 
 - **4KB** locations are picked by hand (*+ Select location*) and kept in
   `rack_shelves`.
+  A location left with nothing on it -- no stock left for it, or no room --
+  is deleted by the next page that draws it and may make changes; one whose
+  boxes cannot be counted (no Qty/Box or size) is only hidden.
 - **6K4** locations are not entered at all: they are JSTERP's own bins. The
   syncing laptop sends every 6K4 bin with its SKUs and qty (extension 1.3.0,
   `jst_zones` with `"bins": true`), `jst_sync()` keeps them in `rack_bins`, and
