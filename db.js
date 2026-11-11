@@ -339,7 +339,8 @@ const DB = (function () {
       await rest(SHELF_TABLE, {
         method: "POST", query: "?on_conflict=import_id,label,sku_id",
         body: [{ import_id: importId, label: label, sku_id: skuId, qty: units, assigned_at: at }],
-        prefer: "resolution=ignore-duplicates,return=minimal",
+        // Picked again (it was hidden for having nothing on it): the new qty.
+        prefer: "resolution=merge-duplicates,return=minimal",
       });
       return { label: label, sku: skuId, qty: units, at: at };
     },

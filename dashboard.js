@@ -1006,7 +1006,8 @@ const Dashboard = (function () {
     try {
       const head = await ensureImport();
       const given = await DB.shelves.assign(head.id, label, r.sku.id, qty);
-      state.data.shelves = state.data.shelves.concat([given]);
+      state.data.shelves = state.data.shelves
+        .filter((a) => !(a.label === label && String(a.sku) === String(r.sku.id))).concat([given]);
       closePicker();
       refresh();
     } catch (err) {

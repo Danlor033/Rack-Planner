@@ -192,6 +192,15 @@ const Allocate = (function () {
       r.spots.push({ label: a.label, boxes: boxes, qty: qty, asked: asked });
     }
 
+    // A location with nothing on it -- no stock left for it, or no room -- is
+    // not shown anywhere and the shelf counts as free. It stays saved, and
+    // comes back with its qty when there is stock for it again.
+    for (const r of results) r.spots = r.spots.filter((p) => p.boxes > 0);
+    for (const [label, rec] of locations) {
+      rec.sections = rec.sections.filter((sec) => sec.boxes > 0);
+      if (!rec.sections.length) locations.delete(label);
+    }
+
     for (const r of results) {
       const s = r.sku;
       const remaining = left.get(r);
