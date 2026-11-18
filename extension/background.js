@@ -1,13 +1,13 @@
-// 4KB Qty from JSTERP, every 30 seconds, with no tab open.
+// 4KB and 6K4 Qty from JSTERP, every few seconds, with no tab open.
 //
 // This runs in Chrome itself, using the JSTERP sign-in of the Chrome it is
 // installed in, for as long as that Chrome is open. Several laptops can have
-// it. Every 30 seconds each one checks in with Rack Planner, which answers
-// whose turn it is: one laptop reads Warehouse > Zone Inventory -- owner
+// it. Each one checks in with Rack Planner, which answers whose turn it is
+// and how often to go (jst_interval: 5 seconds): one laptop reads Warehouse > Zone Inventory -- owner
 // Shigetsu, Main Warehouse, start position 4KB, then the other zones Rack
 // Planner names (6K4 storage) -- and sends the quantities;
 // the others only make sure they are still signed in to JSTERP, ready to take
-// over within a minute if it stops. Each laptop is on Rack Planner's
+// over within a minute if it stops. The waiting ones check every 15 seconds. Each laptop is on Rack Planner's
 // Accounts page, where an admin can rename, approve or pause it.
 "use strict";
 
@@ -17,7 +17,10 @@ const STOCK_URL = "https://asia.jsterp.com/wms/Pack/GetPackItemsPages";
 const JST_HOME = "https://asia.jsterp.com/";
 const SIGN_IN_URL = "https://asia-web.jsterp.com/";
 const ALARM = "sync";
+// Chrome wakes an extension at most every 30 seconds; the alarm is only the
+// backstop that restarts the faster loop if Chrome put this worker to sleep.
 const EVERY_MINUTES = 0.5;
+const STANDBY_SECONDS = 15;
 
 // The Zone Inventory filters, as JSTERP sends them: owner Shigetsu
 // (LinkCoIds / LinkWarehouseIds), warehouse area Main, start position 4KB,
@@ -185,10 +188,20 @@ chrome.notifications.onClicked.addListener(function () {
 // --- one round --------------------------------------------------------------------
 
 let busy = false;
+// Seconds to the next round: Rack Planner's interval while syncing, 15 while
+// waiting, 15 after a failure.
+let pace = STANDBY_SECONDS;
+let timer = null;
+
+function next(seconds) {
+  clearTimeout(timer);
+  timer = setTimeout(round, seconds * 1000);
+}
 
 async function round() {
   if (busy) return;
   busy = true;
+  pace = STANDBY_SECONDS;
   try {
     const key = await secret();
     // How JSTERP went last round travels with this check-in.
@@ -197,13 +210,15 @@ async function round() {
       p_secret: key, p_version: chrome.runtime.getManifest().version, p_platform: platform(),
       p_jst_user: await jstUser(), p_ok: jst ? jst.ok : null, p_message: jst ? jst.message || null : null,
     });
-    await chrome.storage.local.set({ me: turn });
+    const every = Math.max(2, Number(turn.every) || 30);
+    await chrome.storage.local.set({ me: Object.assign({}, turn, { every: every }) });
     if (turn.mode === "paused") {
       await show(true, "Paused on Rack Planner's Accounts page.");
       return;
     }
 
     let stock = null;
+    const started = Date.now();
     try {
       if (turn.mode === "sync") stock = await readStock(turn.zones);
       else await checkSignedIn();
@@ -219,9 +234,12 @@ async function round() {
     if (turn.mode === "sync") {
       const info = await rpc("jst_sync", {
         p_secret: key, p_stock: stock.qty, p_rows: stock.rows, p_zones: stock.zones, p_bins: stock.bins,
+        p_ms: Date.now() - started,
       });
+      pace = every;
       const z = (info.zones || {})["6k4"];
-      await show(!stock.zoneErrors.length, "Syncing · " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
+      await show(!stock.zoneErrors.length, "Syncing every " + every + " s (a round takes " +
+        ((Date.now() - started) / 1000).toFixed(1) + " s) \u00b7 " + info.skus + " SKUs, " + Number(info.units).toLocaleString() + " pcs in 4KB · " +
         (z ? Number(z.units).toLocaleString() + " pcs in 6K4 · " : "") +
         (info.changed ? info.changed + " updated" : "no change") +
         (info.notInPlannerCount ? " · " + info.notInPlannerCount + " not in Rack Planner" : "") +
@@ -236,6 +254,7 @@ async function round() {
     await show(false, "Rack Planner: " + e.message);
   } finally {
     busy = false;
+    next(pace);
   }
 }
 

@@ -24,6 +24,8 @@ const Dashboard = (function () {
     detail: $("detail"), detailClose: $("detailClose"),
     dLabel: $("dLabel"), dWhere: $("dWhere"), dCanvas: $("dCanvas"), dTable: $("dTable"),
     skuFilter: $("skuFilter"), qtyFilter: $("qtyFilter"), skuTable: $("skuTable"),
+    masterPage: $("page-skus"), masterTable: $("masterTable"), masterSearch: $("masterSearch"),
+    masterCat: $("masterCat"), masterCount: $("masterCount"), masterStatus: $("masterStatus"),
     gap: $("dataGap"), gapText: $("dataGapText"), gapShow: $("dataGapShow"),
     ruleDays: $("ruleDays"), skuStatus: $("skuStatus"),
     catList: $("catList"), catHint: $("catHint"), skuAdd: $("skuAdd"), daysField: $("daysField"),
@@ -37,6 +39,10 @@ const Dashboard = (function () {
     askDialog: $("askDialog"), askTitle: $("askTitle"), askField: $("askField"), askFieldLabel: $("askFieldLabel"),
     askInput: $("askInput"), askHint: $("askHint"), askError: $("askError"), askBody: $("askBody"), askYes: $("askYes"), askNo: $("askNo"), catOptions: $("catOptions"), tierOptions: $("tierOptions"),
   };
+
+  // The question and Add SKU windows open from the masterlist too, which is
+  // another page: they live on the body, not inside the racks page.
+  document.body.append(el.askDialog, el.skuDialog);
 
   const state = {
     data: null,        // { import, skus }
@@ -214,6 +220,7 @@ const Dashboard = (function () {
   // --- drawing everything ----------------------------------------------------
 
   function render() {
+    renderMaster();
     renderKpis();
     renderMap();
     renderDetail();
@@ -1130,16 +1137,19 @@ const Dashboard = (function () {
   let saving = 0;
   let failed = null;
   function status() {
-    if (failed) {
-      el.skuStatus.textContent = failed;
-      el.skuStatus.className = "save-status bad-text";
-    } else {
-      el.skuStatus.textContent = saving ? "Saving\u2026" : "Changes are saved for everyone";
-      el.skuStatus.className = "save-status sub";
+    for (const line of [el.skuStatus, el.masterStatus]) {
+      if (failed) {
+        line.textContent = failed;
+        line.className = "save-status bad-text";
+      } else {
+        line.textContent = saving ? "Saving\u2026" : "Changes are saved for everyone";
+        line.className = "save-status sub";
+      }
     }
   }
 
-  el.skuTable.addEventListener("change", function (e) {
+  // A number typed into either list: the SKU list or the masterlist.
+  function onEdit(e) {
     const input = e.target.closest("input[data-field]");
     if (!input || !Auth.canEdit()) return;
     const r = state.alloc.results[Number(input.dataset.sku)];
@@ -1173,7 +1183,9 @@ const Dashboard = (function () {
       })
       .finally(function () { saving--; status(); });
     refresh();
-  });
+  }
+  el.skuTable.addEventListener("change", onEdit);
+  el.masterTable.addEventListener("change", onEdit);
 
   // Lay out again and redraw everything but the SKU list, whose rows only
   // have their worked-out numbers brought up to date.
@@ -1303,7 +1315,7 @@ const Dashboard = (function () {
   // From the top bar: the form lives on the racks page, so go there first
   // if another page is showing.
   el.skuAdd.addEventListener("click", function () {
-    if (document.getElementById("page-racks").hidden) Pages.show(Layout.KEY === "6k4" ? "racks-6k4" : "racks");
+    if (document.getElementById("page-racks").hidden && el.masterPage.hidden) Pages.show(Layout.KEY === "6k4" ? "racks-6k4" : "racks");
     if (state.data) openAdd();
   });
   el.catAdd.addEventListener("click", openAdd);
@@ -1339,6 +1351,14 @@ const Dashboard = (function () {
       const added = await DB.imports.addSku(head.id, sku, line);
       state.data.skus.push(added);
       el.skuDialog.close();
+      if (!el.masterPage.hidden) {
+        buildColors();
+        recompute();
+        el.masterCat.value = "";
+        el.masterSearch.value = added.sku;
+        renderMaster();
+        return;
+      }
       state.category = added.category || "";
       el.skuFilter.value = "all";
       el.qtyFilter.value = "show";
@@ -1842,6 +1862,8 @@ const Dashboard = (function () {
         if (state.picking !== null) renderPicker();
       } else {
         refresh();
+        // Somebody else's numbers, unless a box here is being typed in.
+        if (!el.masterTable.contains(document.activeElement)) renderMaster();
       }
     } catch (e) {
       console.error(e);
@@ -1852,6 +1874,98 @@ const Dashboard = (function () {
     if (!DB.configured()) return;
     liveStatus("connecting");
     DB.live(onLive, liveStatus);
+  }
+
+  // --- the SKU masterlist ----------------------------------------------------------
+
+  // Every SKU in one list, by category then name: its stock in both zones,
+  // and the numbers that size its boxes, edited in place, and a way to delete
+  // it. Edits save the same way as in the SKU list.
+  function masterRows() {
+    const q = el.masterSearch.value.trim().toLowerCase();
+    const cat = el.masterCat.value;
+    return state.data.skus.map((s, i) => ({ s: s, i: i }))
+      .filter((x) => (!cat || catName(x.s.category) === cat) && (!q || x.s.sku.toLowerCase().indexOf(q) >= 0))
+      .sort((a, b) => Allocate.compareText(catName(a.s.category), catName(b.s.category)) || Allocate.compareText(a.s.sku, b.s.sku));
+  }
+
+  function renderMaster() {
+    if (!state.data || el.masterPage.hidden) return;
+    const cats = [...new Set(state.data.skus.map((s) => catName(s.category)))].sort(Allocate.compareText);
+    const keep = el.masterCat.value;
+    el.masterCat.innerHTML = '<option value="">All categories</option>' +
+      cats.map((c) => '<option value="' + esc(c) + '"' + (c === keep ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+    const rows = masterRows();
+    const edit = Auth.canEdit();
+    const box = (x, field) => '<td class="edit-col"><input class="cell-in" type="number" min="0" step="any" inputmode="decimal" data-sku="' +
+      x.i + '" data-field="' + field + '" value="' + (x.s[field] === null || x.s[field] === undefined ? "" : x.s[field]) + '"' +
+      (edit ? "" : " readonly") + "></td>";
+    el.masterCount.textContent = rows.length === state.data.skus.length ? fmt(rows.length) + " SKUs"
+      : fmt(rows.length) + " of " + fmt(state.data.skus.length) + " SKUs";
+    el.masterTable.innerHTML = "<thead><tr><th>#</th><th>SKU</th><th>Category</th><th>Tier</th><th>4KB Qty</th><th>6K4 Qty</th>" +
+      '<th>Qty/Box</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th></th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (x, n) {
+        const s = x.s;
+        return "<tr>" + '<td class="sub">' + (n + 1) + "</td>" +
+          '<td class="sku-name"><span class="sku-wrap"><b>' + esc(s.sku) + "</b>" +
+          '<button type="button" class="copy-btn" data-copy="' + esc(s.sku) + '" title="Copy SKU" aria-label="Copy ' + esc(s.sku) + '">' +
+          COPY_ICON + "</button></span></td>" +
+          '<td><i class="cat-dot" style="background:' + categoryColor(s.category) + '"></i>' + esc(catName(s.category)) + "</td>" +
+          "<td>" + esc(s.tier) + "</td>" +
+          "<td>" + fmt(s.quantity) + "</td><td>" + fmt(s.qty6k4) + "</td>" +
+          box(x, "qtyPerBox") + box(x, "length") + box(x, "width") + box(x, "height") +
+          '<td><button type="button" class="ghost small danger sku-del" data-del="' + x.i + '" title="Delete ' + esc(s.sku) +
+          '">Delete</button></td></tr>';
+      }).join("") : '<tr><td colspan="11" class="sub">No SKU matches.</td></tr>') + "</tbody>";
+  }
+
+  // Gone for everyone, with its 4KB locations (the database takes those with
+  // it). The 4KB sync does not bring it back; it is counted as "not in this
+  // list" instead.
+  async function deleteSku(index) {
+    const s = state.data.skus[index];
+    if (!s || !s.id || !Auth.canEdit()) return;
+    const spots = state.data.shelves.filter((a) => String(a.sku) === String(s.id)).length;
+    const yes = await ask({
+      title: "Delete " + s.sku + "?",
+      body: "<p>It goes from the SKU list for everyone" +
+        (spots ? ", with its " + spots + " 4KB location" + (spots === 1 ? "" : "s") : "") +
+        ". This cannot be undone; you can add it again with + Add SKU.</p>",
+      yes: "Delete", danger: true,
+    });
+    if (!yes) return;
+    failed = null;
+    saving++;
+    status();
+    try {
+      await DB.imports.removeSku(s.id);
+      if (state.picking !== null) closePicker();
+      state.data.skus = state.data.skus.filter((x) => x !== s);
+      state.data.shelves = state.data.shelves.filter((a) => String(a.sku) !== String(s.id));
+      buildColors();
+      recompute();
+      renderMaster();
+    } catch (err) {
+      console.error(err);
+      failed = "Could not delete " + s.sku + ": " + err.message;
+    } finally {
+      saving--;
+      status();
+    }
+  }
+
+  el.masterSearch.addEventListener("input", renderMaster);
+  el.masterCat.addEventListener("change", renderMaster);
+  el.masterTable.addEventListener("click", function (e) {
+    const copy = e.target.closest("button[data-copy]");
+    if (copy) { copyButton(copy); return; }
+    const del = e.target.closest("button[data-del]");
+    if (del) deleteSku(Number(del.dataset.del));
+  });
+
+  // Called by Pages when the masterlist is opened.
+  function masterPage(on) {
+    if (on) renderMaster();
   }
 
   // --- which racks ---------------------------------------------------------------
@@ -1905,6 +2019,7 @@ const Dashboard = (function () {
     current: () => state.data,
     shown: function () { if (state.view) state.view.redraw(); },
     setZone: setZone,
+    masterPage: masterPage,
     variancePage: variancePage,
   };
 })();

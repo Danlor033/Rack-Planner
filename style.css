@@ -892,3 +892,14 @@ body:not(.is-admin) #soldSync { display: none; }
 /* + Add SKU among the tabs: an action, not a page. */
 .nav-btn.nav-add { color: var(--accent); font-weight: 600; }
 .nav-btn.nav-add:hover { background: var(--accent-soft); }
+
+/* The SKU masterlist: one page of every SKU, its box numbers editable. */
+.master { display: flex; flex-direction: column; gap: 12px; padding: 20px; width: 100%; max-width: 1400px; margin: 0 auto; }
+.master-card { padding: 4px 6px; }
+.master-body { max-height: calc(100vh - 220px); }
+.master-tbl th, .master-tbl td { text-align: left; vertical-align: middle; }
+.master-tbl td.sku-name { white-space: normal; overflow-wrap: anywhere; }
+.master-tbl .sku-wrap { display: inline-flex; align-items: center; gap: 4px; }
+.master-tbl td.edit-col { width: 84px; padding: 3px 4px; }
+.master-tbl td.edit-col input.cell-in { width: 100%; padding: 3px 6px; }
+body.read-only .sku-del { display: none; }

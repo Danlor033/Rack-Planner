@@ -16,7 +16,8 @@ async function render() {
   if (!last) return;
   dot.className = last.ok ? "ok" : "bad";
   text.textContent = last.text;
-  when.textContent = new Date(last.at).toLocaleTimeString() + " · every 30 seconds";
+  const every = me && me.mode === "sync" && me.every ? me.every : 15;
+  when.textContent = new Date(last.at).toLocaleTimeString() + " \u00b7 every " + every + " seconds";
 }
 
 now.addEventListener("click", async function () {

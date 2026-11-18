@@ -4,6 +4,9 @@ Two things in one page:
 
 - **4KB Racks** and **6K4 Racks** — the SKU list, and every SKU's shelf in
   that zone's racks: which shelf, how many boxes, and how they sit on it.
+- **SKU Masterlist** (`#skus`) — every SKU in one list with its 4KB and 6K4
+  Qty: edit Qty/Box and the box size (L, W, H) in place, or delete a SKU
+  (with its 4KB locations). Viewers see it read-only.
 - **Calculator** — type one box size, get how many fit in a rack and how.
 
 Every shelf, in both zones, is 240 × 120 cm (L × W). Layers 1 and 2 are
@@ -291,8 +294,12 @@ Chrome extension, [`extension/`](extension/), does it in an ordinary Chrome on
 the office laptops, using that Chrome's JSTERP sign-in, with no JSTERP tab
 open.
 
-- Every 30 seconds each laptop checks in (`jst_checkin`), and Rack Planner
-  answers whose turn it is. One laptop syncs: it reads the list and sends it
+- Each laptop checks in (`jst_checkin`), and Rack Planner answers whose turn
+  it is and how often to go. The syncing laptop runs a round every
+  `rack_settings.jst_interval` seconds (5; a round -- 4KB, 6K4 and the save --
+  takes a second or two, kept as `ms` in the note), the others every 15.
+  Chrome wakes an extension at most every 30 seconds, so since 1.4.0 the
+  extension keeps its own loop and the 30-second alarm only restarts it. One laptop syncs: it reads the list and sends it
   (`jst_sync`), which writes any 4KB Qty that changed into `rack_skus` and
   leaves a note in `rack_sync` (name `jsterp-4kb`). The others stand by,
   asking JSTERP for one row to be sure they are still signed in. When no
